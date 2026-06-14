@@ -69,9 +69,18 @@ public class SoundFontPlayer
             _waveOut?.Stop();
             _waveOut?.Dispose();
 
-            _asioOut = new AsioOut(AudioDriverManager.SelectedAsioDriverName);
-            _asioOut.Init(_midiSampleProvider);
-            _asioOut.Play();
+            if (AudioDriverManager.TryCreateAsioOut(out _asioOut))
+            {
+                _asioOut.Init(_midiSampleProvider);
+                _asioOut.Play();
+            }
+            else
+            {
+                _waveOut = new WaveOutEvent();
+                _waveOut.DesiredLatency = CoreSettings.WaveOutLatency;
+                _waveOut.Init(_midiSampleProvider);
+                _waveOut.Play();
+            }
         }
     }
 
