@@ -651,7 +651,7 @@ public class ScreenCanvas
             GetInputs();
 
             var showTopBar = ImGui.IsMouseHoveringRect(Vector2.Zero, new(ImGui.GetIO().DisplaySize.X, 300));
-            if (_comboFallSpeed || _comboPlaybackSpeed || _leftHandColorPicker || _rightHandColorPicker || _comboSoundFont || _comboPlugins)
+            if (_comboFallSpeed || _comboPlaybackSpeed || _leftHandColorPicker || _rightHandColorPicker || _comboSoundFont || _comboPlugins || _isHoveringTextBtn)
                 showTopBar = true;
 
             if (playMode)
@@ -818,43 +818,10 @@ public class ScreenCanvas
             SetTextNotes(!ShowTextNotes);
         }
         ImGui.PopFont();
-        _isHoveringTextBtn = ImGui.IsItemHovered();
-        if (_isHoveringTextBtn)
-        {
-            if (ImGui.GetIO().MouseWheel > 0)
-            {
-                switch (TextType)
-                {
-                    case TextTypes.Octave:
-                        SetTextType(TextTypes.Velocity);
-                        break;
-                    case TextTypes.Velocity:
-                        SetTextType(TextTypes.NoteName);
-                        break;
-                }
-            }
-            else if (ImGui.GetIO().MouseWheel < 0)
-            {
-                switch (TextType)
-                {
-                    case TextTypes.NoteName:
-                        SetTextType(TextTypes.Velocity);
-                        break;
-                    case TextTypes.Velocity:
-                        SetTextType(TextTypes.Octave);
-                        break;
-                }
-            }
-
-            ImGui.SetCursorScreenPos(new(ImGui.GetIO().DisplaySize.X - ImGuiUtils.FixedSize(new Vector2(160)).X, CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(250)).Y));
-            ImGui.BeginGroup();
-            foreach (var textType in Enum.GetValues<TextTypes>())
-            {
-                var selected = textType == TextType;
-                ImGui.Selectable(textType.ToString(), selected);
-            }
-            ImGui.EndGroup();
-        }
+        var textBtnMin = ImGui.GetItemRectMin();
+        var textBtnMax = ImGui.GetItemRectMax();
+        if (ImGui.IsItemHovered() || ImGui.IsMouseHoveringRect(textBtnMin, textBtnMax))
+            _isHoveringTextBtn = true;
 
         // LOCK BUTTON
         ImGui.PushFont(FontController.Font16_Icon16);
@@ -914,6 +881,53 @@ public class ScreenCanvas
             }
             else
                 _comboPlaybackSpeed = false;
+        }
+
+        if (_isHoveringTextBtn)
+        {
+            if (ImGui.GetIO().MouseWheel > 0)
+            {
+                switch (TextType)
+                {
+                    case TextTypes.Octave:
+                        SetTextType(TextTypes.Velocity);
+                        break;
+                    case TextTypes.Velocity:
+                        SetTextType(TextTypes.NoteName);
+                        break;
+                }
+            }
+            else if (ImGui.GetIO().MouseWheel < 0)
+            {
+                switch (TextType)
+                {
+                    case TextTypes.NoteName:
+                        SetTextType(TextTypes.Velocity);
+                        break;
+                    case TextTypes.Velocity:
+                        SetTextType(TextTypes.Octave);
+                        break;
+                }
+            }
+
+            ImGui.SetCursorScreenPos(new(textBtnMin.X, textBtnMax.Y));
+            ImGui.PushStyleColor(ImGuiCol.ChildBg, ImGuiTheme.Style.Colors[(int)ImGuiCol.PopupBg]);
+            ImGui.BeginChild("##TextTypeMenu", Vector2.Zero,
+                ImGuiChildFlags.AutoResizeY | ImGuiChildFlags.AlwaysAutoResize | ImGuiChildFlags.FrameStyle);
+            var menuMin = ImGui.GetWindowPos();
+            var menuMax = menuMin + ImGui.GetWindowSize();
+            foreach (var textType in Enum.GetValues<TextTypes>())
+            {
+                if (ImGui.Selectable(textType.ToString(), textType == TextType))
+                    SetTextType(textType);
+            }
+            menuMax = ImGui.GetWindowPos() + ImGui.GetWindowSize();
+            ImGui.EndChild();
+            ImGui.PopStyleColor();
+
+            var overButton = ImGui.IsMouseHoveringRect(textBtnMin, textBtnMax);
+            var overMenu = ImGui.IsMouseHoveringRect(menuMin, menuMax);
+            _isHoveringTextBtn = overButton || overMenu;
         }
     }
 
