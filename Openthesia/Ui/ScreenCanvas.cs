@@ -507,17 +507,23 @@ public class ScreenCanvas
     {
         if (!IsLearningMode && !_isHoveringTextBtn)
         {
-            if (ImGui.GetIO().MouseWheel < 0)
+            if (ImGui.GetIO().MouseWheel != 0)
             {
-                float speed = (float)(MidiPlayer.Playback.Speed - 0.25f);
-                float cValue = Math.Clamp(speed, 0.25f, 4);
-                MidiPlayer.Playback.Speed = cValue;
-            }
-            else if (ImGui.GetIO().MouseWheel > 0)
-            {
-                float speed = (float)(MidiPlayer.Playback.Speed + 0.25f);
-                float cValue = Math.Clamp(speed, 0.25f, 4);
-                MidiPlayer.Playback.Speed = cValue;
+                if (ImGui.GetIO().KeyCtrl)
+                {
+                    float scrollAmount = ImGui.GetIO().MouseWheel * 0.5f;
+                    float newTime = Math.Clamp(MidiPlayer.Seconds - scrollAmount, 0, (float)MidiFileData.MidiFile.GetDuration<MetricTimeSpan>().TotalSeconds);
+                    long ms = (long)(newTime * 1000000);
+                    MidiPlayer.Playback.MoveToTime(new MetricTimeSpan(ms));
+                    MidiPlayer.Seconds = newTime;
+                    MidiPlayer.Timer = newTime * 100 * FallSpeedVal;
+                }
+                else
+                {
+                    float speedDelta = ImGui.GetIO().MouseWheel * 0.25f;
+                    float newSpeed = (float)(MidiPlayer.Playback.Speed + speedDelta);
+                    MidiPlayer.Playback.Speed = Math.Clamp(newSpeed, 0.25f, 4);
+                }
             }
         }
 
