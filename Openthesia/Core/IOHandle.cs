@@ -14,10 +14,9 @@ public static class IOHandle
 
     public static List<NoteRect> NoteRects = new();
 
-    private static HashSet<int> _sustainedNotes = new(); // Keeps track of sustained notes
+    private static readonly SustainState _sustainState = new();
 
-    private static bool _sustainPedalActive = false;
-    public static bool SustainPedalActive => _sustainPedalActive;
+    public static bool SustainPedalActive => _sustainState.IsPedalActive;
 
     public struct NoteRect
     {
@@ -32,12 +31,7 @@ public static class IOHandle
 
     private static void OnKeyPressed(SevenBitNumber noteNumber, SevenBitNumber velocity, bool isBlack)
     {
-        // Check if sustain pedal is active
-        if (_sustainPedalActive)
-        {
-            // add to sustained notes
-            _sustainedNotes.Add(noteNumber);
-        }
+        _sustainState.NotePressed(noteNumber);
 
         if (WindowsManager.Window == Enums.Windows.PlayMode)
         {
@@ -58,15 +52,8 @@ public static class IOHandle
 
     private static void OnKeyReleased(SevenBitNumber noteNumber)
     {
-        if (_sustainPedalActive)
+        if (_sustainState.NoteReleased(noteNumber))
         {
-            // If sustain pedal is active, don't stop the note immediately
-            _sustainedNotes.Add(noteNumber);
-        }
-        else
-        {
-            // If sustain pedal is not active, stop the note immediately
-            //MidiPlayer.RealTimeSoundFontPlayer.Synthesizer.ProcessMidiMessage(0, 128, noteNumber, ev.Velocity);
             MidiPlayer.SoundFontEngine?.StopNote(0, noteNumber);
         }
 
@@ -105,18 +92,15 @@ public static class IOHandle
 
     private static void OnSustainPedalOn()
     {
-        _sustainPedalActive = true;
+        _sustainState.PressPedal();
     }
 
     private static void OnSustainPedalOff()
     {
-        _sustainPedalActive = false;
-        // Stop all sustained notes when the sustain pedal is released
-        foreach (var note in _sustainedNotes)
+        foreach (var note in _sustainState.ReleasePedal())
         {
             MidiPlayer.SoundFontEngine?.StopNote(0, note);
         }
-        _sustainedNotes.Clear();
     }
 
     public static void OnEventReceived(object sender, MidiEventReceivedEventArgs e)
