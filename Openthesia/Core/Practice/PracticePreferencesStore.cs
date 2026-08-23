@@ -1,6 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
-using Newtonsoft.Json;
 using Openthesia.Core.Songs;
 
 namespace Openthesia.Core.Practice;
@@ -70,7 +67,7 @@ public sealed class PracticePreferencesStore
                     document.TempoRatio),
                 Warning: null);
         }
-        catch (Exception exception) when (IsDataFailure(exception))
+        catch (Exception exception) when (JsonFile.IsDataFailure(exception))
         {
             return new PracticePreferencesLoadResult(
                 PracticePreferences.Default,
@@ -93,18 +90,13 @@ public sealed class PracticePreferencesStore
         }
 
         var path = GetPreferencesPath(learnerId, chartId);
-        if (File.Exists(path))
+        if (!JsonFile.ExistingDocumentCanBeOverwritten(
+                path,
+                candidatePath => ReadDocument(candidatePath, learnerId, chartId)))
         {
-            try
-            {
-                ReadDocument(path, learnerId, chartId);
-            }
-            catch (Exception exception) when (IsDataFailure(exception))
-            {
-                return new PracticePreferencesSaveResult(
-                    Saved: false,
-                    "Existing Practice preferences could not be read and were not overwritten.");
-            }
+            return new PracticePreferencesSaveResult(
+                Saved: false,
+                "Existing Practice preferences could not be read and were not overwritten.");
         }
 
         var document = new PracticePreferencesDocument
@@ -117,26 +109,18 @@ public sealed class PracticePreferencesStore
             Accompaniment = preferences.Accompaniment.ToString(),
             TempoRatio = preferences.TempoRatio
         };
-        try
-        {
-            JsonFile.Write(path, document);
-            return new PracticePreferencesSaveResult(Saved: true, Warning: null);
-        }
-        catch (Exception exception) when (IsDataFailure(exception))
-        {
-            return new PracticePreferencesSaveResult(
+        return JsonFile.TryWrite(path, document)
+            ? new PracticePreferencesSaveResult(Saved: true, Warning: null)
+            : new PracticePreferencesSaveResult(
                 Saved: false,
                 "Practice preferences could not be saved.");
-        }
     }
 
     private string GetPreferencesPath(LearnerId learnerId, ChartId chartId)
     {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(chartId.Value));
-        return Path.Combine(
-            _preferencesDirectory,
-            learnerId.ToString(),
-            $"{Convert.ToHexString(hash).ToLowerInvariant()}.json");
+        return JsonFile.GetChartPath(
+            Path.Combine(_preferencesDirectory, learnerId.ToString()),
+            chartId);
     }
 
     private static PracticePreferencesDocument ReadDocument(
@@ -201,11 +185,6 @@ public sealed class PracticePreferencesStore
                preferences.TempoRatio > 0 &&
                (preferences.RequiredHands != RequiredHands.Both ||
                 preferences.Accompaniment == Accompaniment.Silent);
-    }
-
-    private static bool IsDataFailure(Exception exception)
-    {
-        return exception is IOException or UnauthorizedAccessException or JsonException or InvalidDataException;
     }
 
     private sealed class PracticePreferencesDocument

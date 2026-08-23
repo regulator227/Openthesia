@@ -819,17 +819,27 @@ public class ScreenCanvas
                         ScreenRecorder.StartRecording();
                         if (CoreSettings.VideoRecStartsPlayback)
                         {
-                            MidiPlayer.Playback.Start();
-                            MidiPlayer.StartTimer();
+                            if (IsPracticeMode)
+                                MidiPracticeSession.Resume();
+                            else
+                            {
+                                MidiPlayer.Playback.Start();
+                                MidiPlayer.StartTimer();
+                            }
                         }
                         break;
                     case RecorderStatus.Recording:
                         ScreenRecorder.EndRecording();
                         MidiPlayer.SoundFontEngine?.StopAllNote(0);
-                        MidiPlayer.Playback.Stop();
-                        MidiPlayer.Playback.MoveToStart();
-                        MidiPlayer.IsTimerRunning = false;
-                        MidiPlayer.Timer = 0;
+                        if (IsPracticeMode)
+                            MidiPracticeSession.Restart();
+                        else
+                        {
+                            MidiPlayer.Playback.Stop();
+                            MidiPlayer.Playback.MoveToStart();
+                            MidiPlayer.IsTimerRunning = false;
+                            MidiPlayer.Timer = 0;
+                        }
                         break;
                 }
             }
@@ -1010,11 +1020,11 @@ public class ScreenCanvas
         ImGui.SetCursorScreenPos(new(ImGuiUtils.FixedSize(new Vector2(25)).X, CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(50)).Y));
         if (ImGui.Button(FontAwesome6.ArrowLeftLong, ImGuiUtils.FixedSize(new Vector2(100, 50))) || ImGui.IsKeyPressed(ImGuiKey.Escape, false))
         {
+            MidiPracticeSession.Deactivate();
             MidiPlayer.Playback?.Stop();
             MidiPlayer.Playback?.MoveToStart();
             MidiPlayer.IsTimerRunning = false;
             MidiPlayer.Timer = 0;
-            MidiPracticeSession.Deactivate();
             var route = playMode ? Enums.Windows.Home : Enums.Windows.MidiBrowser;
             WindowsManager.SetWindow(route);
         }

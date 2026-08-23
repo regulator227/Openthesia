@@ -37,7 +37,7 @@ public static class MidiPracticeSession
         if (preferences.Mode != PracticeMode.WaitForNotes)
             return "This Practice Mode is not available yet.";
         if (MidiFileData.Context is not { } context || MidiFileData.MidiFile is null)
-            return "Open a MIDI Chart before starting Practice.";
+            return "Open a Chart from a MIDI Source before starting Practice.";
         if (LeftRightData.S_IsRightNote.Count != MidiFileData.Notes.Count())
             return "Hand Assignments do not match this Chart.";
 
@@ -62,7 +62,7 @@ public static class MidiPracticeSession
     {
         lock (Sync)
         {
-            if (_session is null || IsTerminal(_session.Snapshot.State))
+            if (_session is null)
                 return;
 
             Apply(_session.Handle(new PracticeSignal.Pulse(CurrentSessionTime)));
@@ -73,7 +73,7 @@ public static class MidiPracticeSession
     {
         lock (Sync)
         {
-            if (_session is null || IsTerminal(_session.Snapshot.State))
+            if (_session is null)
                 return;
 
             Apply(_session.Handle(new PracticeSignal.NoteOn(CurrentSessionTime, pitch, velocity)));
@@ -84,7 +84,7 @@ public static class MidiPracticeSession
     {
         lock (Sync)
         {
-            if (_session is null || IsTerminal(_session.Snapshot.State))
+            if (_session is null)
                 return;
 
             var signal = _session.Snapshot.State == PracticeSessionState.LearnerPaused
@@ -98,7 +98,7 @@ public static class MidiPracticeSession
     {
         lock (Sync)
         {
-            if (_session?.Snapshot.State is not (PracticeSessionState.Running or PracticeSessionState.WaitingForInput))
+            if (_session is null)
                 return;
 
             Apply(_session.Handle(new PracticeSignal.Pause(CurrentSessionTime)));
@@ -109,7 +109,7 @@ public static class MidiPracticeSession
     {
         lock (Sync)
         {
-            if (_session?.Snapshot.State != PracticeSessionState.LearnerPaused)
+            if (_session is null)
                 return;
 
             Apply(_session.Handle(new PracticeSignal.Resume(CurrentSessionTime)));
@@ -120,7 +120,7 @@ public static class MidiPracticeSession
     {
         lock (Sync)
         {
-            if (_session is null || _chart is null || _plan is null || IsTerminal(_session.Snapshot.State))
+            if (_session is null || _chart is null || _plan is null)
                 return;
 
             var start = _plan.Range?.Start ?? ChartTime.Zero;
@@ -168,7 +168,7 @@ public static class MidiPracticeSession
 
     private static void DeactivateCore(bool abandon)
     {
-        if (abandon && _session is not null && !IsTerminal(_session.Snapshot.State))
+        if (abandon && _session is not null)
             Apply(_session.Handle(new PracticeSignal.Abandon(CurrentSessionTime)));
 
         _session = null;
@@ -227,17 +227,12 @@ public static class MidiPracticeSession
     {
         return error switch
         {
-            PracticeStartError.RequiredHandHasNoNotes => "The selected required hand has no notes in this Chart.",
-            PracticeStartError.InvalidAccompaniment => "Automatic accompaniment requires one selected hand.",
+            PracticeStartError.RequiredHandHasNoNotes => "The Required Hands selection has no notes in this Chart.",
+            PracticeStartError.InvalidAccompaniment => "Automatic Accompaniment requires Left or Right Required Hands.",
             PracticeStartError.InvalidTempo => "Choose a positive Practice tempo.",
             PracticeStartError.InvalidRange => "The selected Practice range is invalid.",
             _ => "The Practice Session could not be started."
         };
-    }
-
-    private static bool IsTerminal(PracticeSessionState state)
-    {
-        return state is PracticeSessionState.Completed or PracticeSessionState.Abandoned;
     }
 
     private static SessionTime CurrentSessionTime =>

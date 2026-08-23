@@ -190,7 +190,15 @@ public sealed class PracticeSessionTests
         Assert.Equal(PracticeSessionState.WaitingForInput, transition.Snapshot.State);
         Assert.Equal(secondTarget, transition.Snapshot.Position);
         Assert.Equal(new byte[] { 64 }, transition.Snapshot.Target!.Pitches);
-        Assert.Contains(transition.Events, practiceEvent => practiceEvent is PracticeEvent.AssistanceUsed);
+        Assert.Collection(
+            transition.Events,
+            practiceEvent =>
+            {
+                var seeking = Assert.IsType<PracticeEvent.SessionSeeking>(practiceEvent);
+                Assert.Equal(firstTarget, seeking.From);
+                Assert.Equal(secondTarget, seeking.To);
+            },
+            practiceEvent => Assert.IsType<PracticeEvent.AssistanceUsed>(practiceEvent));
     }
 
     [Fact]
@@ -362,6 +370,7 @@ public sealed class PracticeSessionTests
         Assert.Equal(PracticeSessionState.Completed, transition.Snapshot.State);
         Assert.Collection(
             transition.Events,
+            practiceEvent => Assert.IsType<PracticeEvent.SessionSeeking>(practiceEvent),
             practiceEvent => Assert.IsType<PracticeEvent.AssistanceUsed>(practiceEvent),
             practiceEvent => Assert.IsType<PracticeEvent.SessionCompleted>(practiceEvent));
     }

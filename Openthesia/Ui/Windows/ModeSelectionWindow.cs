@@ -124,7 +124,7 @@ public class ModeSelectionWindow : ImGuiWindow
         var y = ImGui.GetIO().DisplaySize.Y * 0.50f;
         ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(250)).X);
         ImGui.SetCursorPos(new Vector2(x, y));
-        if (ImGui.BeginCombo("##RequiredHands", $"Hands: {_practicePreferences.RequiredHands}"))
+        if (ImGui.BeginCombo("##RequiredHands", $"Required Hands: {_practicePreferences.RequiredHands}"))
         {
             foreach (var hands in Enum.GetValues<RequiredHands>())
             {
@@ -205,6 +205,7 @@ public class ModeSelectionWindow : ImGuiWindow
         MidiPracticeSession.Deactivate();
         ScreenCanvasControls.SetEditMode(false);
         PrepareHandAssignments();
+        _practicePreferences = _practicePreferences with { Mode = PracticeMode.WaitForNotes };
         var saved = new PracticePreferencesStore(ProgramData.DataPath).Save(
             learner.Id,
             context.ChartId,

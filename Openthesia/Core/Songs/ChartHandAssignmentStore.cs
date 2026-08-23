@@ -1,7 +1,4 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Xml.Linq;
-using Newtonsoft.Json;
 
 namespace Openthesia.Core.Songs;
 
@@ -51,7 +48,7 @@ public sealed class ChartHandAssignmentStore
                 document.Hands.Select(ParseHand).ToArray(),
                 Warning: null);
         }
-        catch (Exception exception) when (IsDataReadFailure(exception))
+        catch (Exception exception) when (JsonFile.IsDataFailure(exception))
         {
             return Defaults(
                 noteCount,
@@ -66,18 +63,13 @@ public sealed class ChartHandAssignmentStore
             ParseHand(hand.ToString());
 
         var path = GetAssignmentPath(chartId);
-        if (File.Exists(path))
+        if (!JsonFile.ExistingDocumentCanBeOverwritten(
+                path,
+                candidatePath => ReadDocument(candidatePath, chartId)))
         {
-            try
-            {
-                ReadDocument(path, chartId);
-            }
-            catch (Exception exception) when (IsDataReadFailure(exception))
-            {
-                return new HandAssignmentSaveResult(
-                    Saved: false,
-                    "Existing Hand Assignments could not be read and were not overwritten.");
-            }
+            return new HandAssignmentSaveResult(
+                Saved: false,
+                "Existing Hand Assignments could not be read and were not overwritten.");
         }
 
         var document = new HandAssignmentDocument
@@ -86,25 +78,16 @@ public sealed class ChartHandAssignmentStore
             ChartId = chartId.Value,
             Hands = hands.Select(hand => hand.ToString()).ToList()
         };
-        try
-        {
-            JsonFile.Write(path, document);
-            return new HandAssignmentSaveResult(Saved: true, Warning: null);
-        }
-        catch (Exception exception) when (IsDataReadFailure(exception))
-        {
-            return new HandAssignmentSaveResult(
+        return JsonFile.TryWrite(path, document)
+            ? new HandAssignmentSaveResult(Saved: true, Warning: null)
+            : new HandAssignmentSaveResult(
                 Saved: false,
                 "Hand Assignments could not be saved.");
-        }
     }
 
     private string GetAssignmentPath(ChartId chartId)
     {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(chartId.Value));
-        return Path.Combine(
-            _assignmentsDirectory,
-            $"{Convert.ToHexString(hash).ToLowerInvariant()}.json");
+        return JsonFile.GetChartPath(_assignmentsDirectory, chartId);
     }
 
     private HandAssignmentLoadResult LoadLegacyOrDefault(
@@ -210,11 +193,6 @@ public sealed class ChartHandAssignmentStore
         return new HandAssignmentLoadResult(
             Enumerable.Repeat(PianoHand.Right, noteCount).ToArray(),
             warning);
-    }
-
-    private static bool IsDataReadFailure(Exception exception)
-    {
-        return exception is IOException or UnauthorizedAccessException or JsonException or InvalidDataException;
     }
 
     private static bool IsLegacyReadFailure(Exception exception)

@@ -173,6 +173,10 @@ public abstract record PracticeEvent
 
     public sealed record SessionResumed(ChartTime Position) : PracticeEvent;
 
+    public sealed record SessionSeeking(
+        ChartTime From,
+        ChartTime To) : PracticeEvent;
+
     public sealed record AssistanceUsed(
         PracticeAssistance Assistance,
         ChartTime Position) : PracticeEvent;
@@ -498,6 +502,7 @@ public sealed class PracticeSession
     private PracticeTransition Seek(ChartTime position)
     {
         var runningIntent = _snapshot.State is PracticeSessionState.Running or PracticeSessionState.WaitingForInput;
+        var previousPosition = _snapshot.Position;
         _snapshot = _snapshot with { State = PracticeSessionState.Seeking };
         _targetIndex = 0;
         while (_targetIndex < _targets.Count && _targets[_targetIndex].Onset.CompareTo(position) < 0)
@@ -533,6 +538,7 @@ public sealed class PracticeSession
 
         var events = new List<PracticeEvent>
         {
+            new PracticeEvent.SessionSeeking(previousPosition, position),
             new PracticeEvent.AssistanceUsed(PracticeAssistance.Seek, position)
         };
         if (state == PracticeSessionState.Completed)
