@@ -24,6 +24,10 @@ _Avoid_: MIDI file, track
 A specific playable arrangement of a Song, identified by its normalized pitches, timing, durations, and tempo. A Song can have more than one Chart.
 _Avoid_: MIDI file, track, song version
 
+**Hand Assignment**:
+A Chart-owned classification of its notes as left-hand or right-hand parts, shared by all Learners.
+_Avoid_: Staff placement, fingering
+
 **Song Library**:
 A learner's locally managed collection of Songs, including their descriptive metadata, organization, and Practice Progress.
 _Avoid_: Folder browser, song store
