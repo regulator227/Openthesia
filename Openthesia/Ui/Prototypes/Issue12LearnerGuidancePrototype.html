@@ -6,8 +6,8 @@
     <title>Openthesia Issue 12 — Learner Guidance Prototype</title>
     <!--
       PROTOTYPE ONLY — throwaway code for GitHub issue #12.
-      Three variants of learner-facing note labels and fingering guidance, switchable via
-      ?variant=A|B|C, shown against Openthesia's existing Performance Visualization shape.
+      Four variants of learner-facing note labels and fingering guidance, switchable via
+      ?variant=A|B|C|D, shown against Openthesia's existing Performance Visualization shape.
       This standalone file is not part of the application build and intentionally persists nothing.
     -->
     <style>
@@ -512,6 +512,26 @@
             box-shadow: var(--shadow);
         }
 
+        .hybrid-popover {
+            width: min(390px, calc(100% - 28px));
+            max-height: calc(100% - 72px);
+            overflow: auto;
+        }
+
+        .recommend-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            margin-bottom: 8px;
+            padding: 4px 8px;
+            border: 1px solid rgba(255, 201, 102, .45);
+            border-radius: 999px;
+            color: #ffe1a6;
+            background: rgba(92, 61, 10, .55);
+            font-size: 10px;
+            font-weight: 800;
+        }
+
         .teach-tray {
             position: absolute;
             z-index: 36;
@@ -638,6 +658,15 @@
                     "Harder to discover every available label system.",
                     "Adaptive help can feel supportive, but automatic reveal needs a trustworthy trigger."
                 ]
+            },
+            D: {
+                name: "Recommended hybrid",
+                summary: "Use beginner presets inside a compact full-canvas control, keep notation details optional, and make Practice the only surface where learner guidance can appear.",
+                tradeoffs: [
+                    "Combines the drawer’s approachable presets with the popover’s full-size visualization.",
+                    "Performance Visualization has a firm, visible no-guidance boundary.",
+                    "More layered than any pure option, so labels, presets, and authored finger hints need precise ownership language."
+                ]
             }
         };
 
@@ -687,6 +716,25 @@
                 editOwnership: "Shared Chart hints",
                 viewPersistence: "This Practice Session only",
                 scope: "Required notes only",
+                sharedFingerHints: { n1: 1, n2: 3, n3: 5, n4: 2, n5: 4, n6: 1 },
+                personalOverrides: {}
+            },
+            D: {
+                surface: "Recommended hybrid",
+                screenMode: "Practice",
+                practiceMode: "Wait for correct notes",
+                guidancePolicy: "Practice only; forced off in Performance Visualization",
+                panelOpen: true,
+                detailsOpen: false,
+                teachTrayOpen: false,
+                preset: "Read notes",
+                fallingLabel: "English note names",
+                keyLabel: "Simplified A–G",
+                fingering: "Off",
+                scope: "Learner notes only",
+                labelSize: "Medium",
+                editOwnership: "Shared Chart hints",
+                viewPersistence: "Remember for this Chart",
                 sharedFingerHints: { n1: 1, n2: 3, n3: 5, n4: 2, n5: 4, n6: 1 },
                 personalOverrides: {}
             }
@@ -1049,17 +1097,66 @@
             </div>`;
         }
 
+        function renderVariantD(state) {
+            const isPractice = state.screenMode === "Practice";
+            const canvasState = isPractice
+                ? state
+                : { ...state, fallingLabel: "Off", keyLabel: "Off", fingering: "Off" };
+            const center = `<div class="mode-segment"><button type="button" class="${isPractice ? "active" : ""}" data-action="screen-mode" data-mode="Practice">Practice</button><button type="button" class="${!isPractice ? "active" : ""}" data-action="screen-mode" data-mode="Performance Visualization">Visualization</button></div>`;
+            const extra = isPractice
+                ? `<button type="button" class="guidance-pill" data-action="toggle" data-target="panelOpen"><span class="status-dot"></span><span>Guidance · ${state.preset}</span><span>${state.panelOpen ? "▴" : "▾"}</span></button>`
+                : `<span class="tiny-badge">Guidance hidden</span>`;
+
+            const guidancePopover = isPractice && state.panelOpen ? `<section class="popover hybrid-popover" aria-label="Recommended hybrid guidance settings">
+                <span class="recommend-badge">★ Recommended combination</span>
+                <h2>Practice guidance</h2>
+                <p class="popover-subtitle">Start with one plain-language preset. Customize notation only when the preset is not enough.</p>
+                <div class="preset-list">
+                    ${renderPreset("Clean", "◌", "No labels or finger numbers.", state)}
+                    ${renderPreset("Read notes", "A♯", "Names on notes and A–G on white keys.", state)}
+                    ${renderPreset("Learn fingering", "☝", "Shared finger hints with quiet octave markers.", state)}
+                    ${renderPreset("Custom", "⚙", "Choose each guidance layer independently.", state)}
+                </div>
+                <button type="button" class="subtle-button" style="width:100%;margin-top:10px" data-action="toggle" data-target="detailsOpen">${state.detailsOpen ? "Hide" : "Customize"} label details</button>
+                ${state.detailsOpen ? `<div class="advanced-box" style="margin-top:10px">
+                    ${selectField("fallingLabel", state.fallingLabel, fallingLabelChoices, "Falling-note labels")}
+                    ${selectField("keyLabel", state.keyLabel, keyLabelChoices, "Piano-key labels")}
+                    ${selectField("fingering", state.fingering, fingeringChoices, "Finger numbers")}
+                    ${selectField("scope", state.scope, [["Learner notes only","Learner notes only"],["Both hands","Both hands"],["Required note only","Required note only"]], "Visibility")}
+                    ${selectField("labelSize", state.labelSize, [["Small","Small"],["Medium","Medium"],["Large","Large"]], "Label size")}
+                </div>` : ""}
+                <div class="form-grid" style="margin-top:10px">
+                    ${selectField("viewPersistence", state.viewPersistence, [["This Practice Session only","This Practice Session only"],["Remember for this Chart","Remember for this Chart"],["Default for this Learner","Default for this Learner"]], "Remember my setup")}
+                    <div class="inline-row">
+                        <span class="tiny-badge">View · Learner + Chart</span>
+                        <button type="button" class="primary-button" data-action="open-teach">Edit passage fingering</button>
+                    </div>
+                </div>
+            </section>` : "";
+
+            const overlays = `<div class="corner-hypothesis"><span class="recommend-badge">★ Hybrid preference</span><br><strong>D · Presets in a compact control</strong><br>Practice owns guidance; Visualization stays purely performative.</div>${isPractice ? renderTeachTray(state) : ""}`;
+
+            return `<div class="variant-screen variant-d">
+                ${renderWindowBar(extra, center)}
+                ${renderVisualStage(canvasState, "D", overlays)}
+                ${guidancePopover}
+            </div>`;
+        }
+
         function render() {
             const key = currentVariant();
             const state = stateByVariant[key];
             const definition = variantDefinitions[key];
             const root = document.getElementById("variant-root");
-            root.innerHTML = key === "A" ? renderVariantA(state) : key === "B" ? renderVariantB(state) : renderVariantC(state);
+            root.innerHTML = key === "A" ? renderVariantA(state) : key === "B" ? renderVariantB(state) : key === "C" ? renderVariantC(state) : renderVariantD(state);
             document.getElementById("variant-title").textContent = `${key} — ${definition.name}`;
             document.getElementById("variant-summary").textContent = definition.summary;
             document.getElementById("variant-tradeoffs").innerHTML = definition.tradeoffs.map(item => `<div class="tradeoff">${item}</div>`).join("");
             document.getElementById("switcher-label").textContent = `${key} — ${definition.name}`;
-            document.getElementById("state-json").textContent = JSON.stringify({ variant: key, ...state }, null, 2);
+            const inspectedState = key === "D"
+                ? { variant: key, guidanceVisible: state.screenMode === "Practice", ...state }
+                : { variant: key, ...state };
+            document.getElementById("state-json").textContent = JSON.stringify(inspectedState, null, 2);
         }
 
         function setFinger(state, noteId, finger) {
@@ -1086,7 +1183,11 @@
                 const action = actionTarget.dataset.action;
                 if (action === "reset") stateByVariant[key] = structuredClone(initialStates[key]);
                 if (action === "toggle") state[actionTarget.dataset.target] = !state[actionTarget.dataset.target];
-                if (action === "open-teach") Object.assign(state, { teachTrayOpen: true, coachSettingsOpen: false });
+                if (action === "open-teach") {
+                    state.teachTrayOpen = true;
+                    if (key === "C") state.coachSettingsOpen = false;
+                    if (key === "D") state.panelOpen = false;
+                }
                 if (action === "toggle-edit") {
                     state.editingFingerHints = !state.editingFingerHints;
                     state.panelOpen = !state.editingFingerHints;
@@ -1099,7 +1200,11 @@
                     if (state.preset === "Clean") Object.assign(state, { fallingLabel: "Off", keyLabel: "Off", fingering: "Off" });
                     if (state.preset === "Read notes") Object.assign(state, { fallingLabel: "English note names", keyLabel: "Simplified A–G", fingering: "Off" });
                     if (state.preset === "Learn fingering") Object.assign(state, { fallingLabel: "Off", keyLabel: "Octave C markers", fingering: "Shared Chart hints" });
-                    if (state.preset === "Custom") state.drawerMode = "fine";
+                    if (state.preset === "Custom") {
+                        if (key === "B") state.drawerMode = "fine";
+                        if (key === "D") state.detailsOpen = true;
+                    }
+                    if (key === "D" && state.preset !== "Custom") state.detailsOpen = false;
                 }
                 if (action === "reveal") state.hintReveal = actionTarget.dataset.reveal;
                 if (action === "clear-hint") state.hintReveal = "none";
@@ -1110,7 +1215,10 @@
                 }
                 if (action === "screen-mode") {
                     state.screenMode = actionTarget.dataset.mode;
-                    if (state.screenMode === "Performance Visualization") Object.assign(state, { hintReveal: "none", coachSettingsOpen: false, teachTrayOpen: false });
+                    if (state.screenMode === "Performance Visualization") {
+                        if (key === "C") Object.assign(state, { hintReveal: "none", coachSettingsOpen: false, teachTrayOpen: false });
+                        if (key === "D") Object.assign(state, { panelOpen: false, teachTrayOpen: false });
+                    }
                 }
                 render();
                 return;
@@ -1128,7 +1236,7 @@
             if (!field) return;
             const state = stateByVariant[currentVariant()];
             state[field.dataset.field] = field.type === "checkbox" ? field.checked : field.value;
-            if (currentVariant() === "B") state.preset = "Custom";
+            if (["B", "D"].includes(currentVariant()) && ["fallingLabel", "keyLabel", "fingering", "scope", "labelSize"].includes(field.dataset.field)) state.preset = "Custom";
             if (currentVariant() === "C" && state.assistance === "Always for required notes") state.hintReveal = "both";
             render();
         });
