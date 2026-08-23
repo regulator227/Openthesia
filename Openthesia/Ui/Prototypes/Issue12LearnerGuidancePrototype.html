@@ -1,0 +1,1147 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Openthesia Issue 12 — Learner Guidance Prototype</title>
+    <!--
+      PROTOTYPE ONLY — throwaway code for GitHub issue #12.
+      Three variants of learner-facing note labels and fingering guidance, switchable via
+      ?variant=A|B|C, shown against Openthesia's existing Performance Visualization shape.
+      This standalone file is not part of the application build and intentionally persists nothing.
+    -->
+    <style>
+        :root {
+            color-scheme: dark;
+            font-family: Inter, "Segoe UI", system-ui, sans-serif;
+            --page: #0a0f18;
+            --panel: #101827;
+            --panel-2: #172235;
+            --border: #293750;
+            --muted: #93a4bf;
+            --text: #f5f7fb;
+            --green: #24d46b;
+            --green-soft: #113e2b;
+            --red: #ee376d;
+            --blue: #62a9ff;
+            --amber: #ffc966;
+            --canvas: #111a2a;
+            --shadow: 0 18px 60px rgba(0, 0, 0, .45);
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body { margin: 0; min-height: 100%; background: var(--page); color: var(--text); }
+
+        body { min-height: 100vh; overflow: hidden; }
+
+        button, select, input { font: inherit; }
+
+        button, select {
+            color: var(--text);
+            border: 1px solid var(--border);
+            background: #19253a;
+            border-radius: 9px;
+        }
+
+        button { cursor: pointer; }
+
+        button:hover { border-color: #597197; background: #21314b; }
+
+        button:focus-visible, select:focus-visible, input:focus-visible {
+            outline: 3px solid rgba(98, 169, 255, .45);
+            outline-offset: 2px;
+        }
+
+        .workspace {
+            height: calc(100vh - 76px);
+            display: grid;
+            grid-template-columns: minmax(680px, 1fr) 310px;
+            gap: 14px;
+            padding: 14px;
+        }
+
+        .app-frame {
+            position: relative;
+            min-width: 0;
+            overflow: hidden;
+            background: #0d1420;
+            border: 1px solid #2a3851;
+            border-radius: 14px;
+            box-shadow: var(--shadow);
+        }
+
+        #variant-root, .variant-screen { width: 100%; height: 100%; }
+
+        .variant-screen { position: relative; background: var(--canvas); overflow: hidden; }
+
+        .state-inspector {
+            min-width: 0;
+            overflow: auto;
+            padding: 18px;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: var(--panel);
+        }
+
+        .eyebrow {
+            margin: 0 0 7px;
+            color: var(--blue);
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+        }
+
+        .state-inspector h1 { margin: 0; font-size: 19px; line-height: 1.2; }
+
+        .state-inspector .summary { margin: 9px 0 14px; color: var(--muted); font-size: 13px; line-height: 1.45; }
+
+        .tradeoffs { display: grid; gap: 7px; margin-bottom: 15px; }
+
+        .tradeoff {
+            padding: 9px 10px;
+            border-left: 3px solid var(--blue);
+            border-radius: 4px 8px 8px 4px;
+            background: #151f31;
+            color: #cbd5e5;
+            font-size: 12px;
+            line-height: 1.35;
+        }
+
+        .state-title { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; }
+        .state-title h2 { margin: 0; font-size: 13px; }
+        .reset-button { padding: 5px 8px; font-size: 11px; }
+
+        #state-json {
+            margin: 9px 0 0;
+            padding: 11px;
+            overflow: auto;
+            border: 1px solid #233149;
+            border-radius: 9px;
+            background: #0a111d;
+            color: #afc5e8;
+            font: 11px/1.45 "Cascadia Code", Consolas, monospace;
+            white-space: pre-wrap;
+        }
+
+        .persistence-key { display: flex; flex-wrap: wrap; gap: 5px; margin: 12px 0 0; }
+
+        .owner-chip {
+            padding: 4px 7px;
+            border: 1px solid #365079;
+            border-radius: 999px;
+            color: #bad5ff;
+            background: #13233b;
+            font-size: 10px;
+        }
+
+        .window-bar {
+            position: absolute;
+            z-index: 25;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 45px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 14px;
+            border-bottom: 1px solid rgba(255,255,255,.07);
+            background: rgba(10, 16, 27, .88);
+            backdrop-filter: blur(12px);
+        }
+
+        .brand { display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 800; }
+
+        .logo-dot {
+            width: 22px;
+            height: 22px;
+            display: grid;
+            place-items: center;
+            border-radius: 7px;
+            background: linear-gradient(135deg, #24d46b, #3297ff);
+            color: #06110b;
+            font-size: 12px;
+            font-weight: 900;
+        }
+
+        .song-title { color: #c7d2e4; font-size: 12px; font-weight: 600; }
+
+        .mode-badge, .tiny-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 9px;
+            border: 1px solid rgba(36,212,107,.35);
+            border-radius: 999px;
+            color: #a8f3c8;
+            background: rgba(17,62,43,.75);
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .visual-stage {
+            position: absolute;
+            inset: 45px 0 0;
+            overflow: hidden;
+            background:
+                linear-gradient(to right, transparent 0 14%, rgba(255,255,255,.025) 14% 14.2%, transparent 14.2% 42%, rgba(255,255,255,.025) 42% 42.2%, transparent 42.2% 70%, rgba(255,255,255,.025) 70% 70.2%, transparent 70.2%),
+                radial-gradient(circle at 50% 105%, rgba(42, 104, 160, .35), transparent 42%),
+                #121c2c;
+        }
+
+        .visual-stage::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: repeating-linear-gradient(to bottom, transparent 0 74px, rgba(255,255,255,.035) 75px);
+        }
+
+        .notes-field { position: absolute; inset: 0 0 133px; overflow: hidden; }
+
+        .note {
+            position: absolute;
+            z-index: 4;
+            width: 6.7%;
+            min-width: 31px;
+            padding: 4px 2px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            border: 1px solid rgba(255,255,255,.25);
+            border-radius: 7px;
+            color: white;
+            box-shadow: 0 0 16px color-mix(in srgb, var(--note-color), transparent 45%);
+            background: linear-gradient(90deg, color-mix(in srgb, var(--note-color), #000 15%), var(--note-color));
+            font-size: clamp(10px, 1.15vw, 14px);
+            font-weight: 800;
+        }
+
+        .note.hand-left { --note-color: var(--red); }
+        .note.hand-right { --note-color: var(--green); }
+        .note.is-required { outline: 3px solid rgba(255,255,255,.38); outline-offset: 2px; }
+        .note.is-selected { outline: 4px solid var(--amber); outline-offset: 3px; }
+        .note.no-label { color: transparent; }
+        .note-label { text-shadow: 0 1px 2px rgba(0,0,0,.8); }
+        .finger-label {
+            width: 22px;
+            height: 22px;
+            display: grid;
+            place-items: center;
+            border-radius: 50%;
+            background: rgba(7, 14, 23, .82);
+            color: white;
+            font-size: 12px;
+        }
+
+        .strike-line {
+            position: absolute;
+            z-index: 5;
+            left: 0;
+            right: 0;
+            bottom: 131px;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(98,169,255,.8), transparent);
+        }
+
+        .keyboard {
+            position: absolute;
+            z-index: 6;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: 132px;
+            display: grid;
+            grid-template-columns: repeat(21, 1fr);
+            background: #070a0f;
+            border-top: 2px solid #91a6c2;
+        }
+
+        .white-key {
+            position: relative;
+            min-width: 0;
+            border: 0;
+            border-right: 1px solid #8c929c;
+            border-radius: 0 0 6px 6px;
+            background: linear-gradient(#fdfdfd, #d7dde5);
+            color: #152033;
+        }
+
+        .white-key.required-key { background: linear-gradient(#b8ffd3, #65dc92); }
+
+        .key-label {
+            position: absolute;
+            left: 50%;
+            bottom: 10px;
+            transform: translateX(-50%);
+            max-width: 100%;
+            font-size: clamp(8px, .85vw, 11px);
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        .black-key {
+            position: absolute;
+            z-index: 7;
+            top: 0;
+            width: 3.3%;
+            height: 66%;
+            border-radius: 0 0 5px 5px;
+            background: linear-gradient(90deg, #05070b, #2a2d33 70%, #05070b);
+            box-shadow: 2px 3px 5px rgba(0,0,0,.6);
+        }
+
+        .black-key.required-key { background: linear-gradient(90deg, #0b4022, #27b965 70%, #082514); }
+
+        .transport {
+            position: absolute;
+            z-index: 12;
+            left: 50%;
+            bottom: 145px;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 10px;
+            border: 1px solid rgba(255,255,255,.14);
+            border-radius: 999px;
+            background: rgba(8, 14, 24, .86);
+            box-shadow: 0 8px 24px rgba(0,0,0,.3);
+            font-size: 11px;
+        }
+
+        .transport-button { width: 27px; height: 27px; padding: 0; border-radius: 50%; }
+        .timeline { width: clamp(110px, 20vw, 240px); height: 4px; border-radius: 10px; background: #34435a; overflow: hidden; }
+        .timeline::after { content: ""; display: block; width: 32%; height: 100%; background: var(--blue); }
+
+        .corner-hypothesis {
+            position: absolute;
+            z-index: 18;
+            left: 14px;
+            top: 58px;
+            max-width: 290px;
+            padding: 8px 10px;
+            border: 1px solid rgba(98,169,255,.25);
+            border-radius: 9px;
+            color: #b7c8df;
+            background: rgba(12, 21, 35, .82);
+            font-size: 11px;
+            line-height: 1.35;
+        }
+
+        .toolbar-actions { display: flex; align-items: center; gap: 8px; }
+
+        .guidance-pill {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 11px;
+            border-color: rgba(98,169,255,.45);
+            background: #162b49;
+            font-size: 12px;
+            font-weight: 750;
+        }
+
+        .guidance-pill .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+
+        .popover {
+            position: absolute;
+            z-index: 40;
+            top: 55px;
+            right: 14px;
+            width: min(350px, calc(100% - 28px));
+            padding: 15px;
+            border: 1px solid #435879;
+            border-radius: 13px;
+            background: rgba(17, 26, 42, .98);
+            box-shadow: var(--shadow);
+        }
+
+        .popover h2, .drawer h2, .coach-card h2 { margin: 0; font-size: 16px; }
+        .popover-subtitle { margin: 5px 0 13px; color: var(--muted); font-size: 11px; line-height: 1.4; }
+
+        .form-grid { display: grid; gap: 10px; }
+        .field { display: grid; gap: 5px; }
+        .field label { color: #c8d4e6; font-size: 11px; font-weight: 700; }
+        .field select { width: 100%; padding: 8px 9px; font-size: 12px; }
+
+        .inline-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        .inline-row select { flex: 1; }
+        .subtle-button { padding: 7px 9px; font-size: 11px; }
+        .primary-button { padding: 8px 11px; border-color: #4e93ec; background: #1c5fae; font-size: 12px; font-weight: 800; }
+        .primary-button:hover { background: #2672ca; }
+        .danger-quiet { color: #ffc1d0; }
+
+        .advanced-box {
+            display: grid;
+            gap: 10px;
+            padding: 10px;
+            border: 1px solid #2b3b55;
+            border-radius: 9px;
+            background: #0e1726;
+        }
+
+        .toggle-line { display: flex; align-items: center; gap: 8px; color: #c8d4e6; font-size: 11px; }
+
+        .editing-banner {
+            position: absolute;
+            z-index: 35;
+            top: 58px;
+            left: 50%;
+            transform: translateX(-50%);
+            min-width: 390px;
+            max-width: calc(100% - 30px);
+            padding: 9px 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            border: 1px solid #8a6c2c;
+            border-radius: 11px;
+            background: rgba(48, 35, 13, .96);
+            color: #ffe6ad;
+            font-size: 11px;
+        }
+
+        .finger-palette { display: flex; gap: 5px; }
+        .finger-choice { width: 29px; height: 29px; padding: 0; border-radius: 50%; }
+        .finger-choice.active { border-color: var(--amber); background: #6b4b12; }
+
+        .split-view { position: absolute; inset: 45px 0 0; display: grid; grid-template-columns: minmax(0, 1fr) 330px; }
+        .split-view .visual-stage { position: relative; inset: auto; height: 100%; }
+
+        .drawer {
+            position: relative;
+            z-index: 20;
+            overflow: auto;
+            padding: 17px;
+            border-left: 1px solid #32425e;
+            background: #111b2b;
+        }
+
+        .drawer-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin: 13px 0; }
+        .drawer-tab { padding: 7px 4px; font-size: 10px; }
+        .drawer-tab.active { border-color: #4d8ddd; background: #1e4b7f; }
+
+        .preset-list { display: grid; gap: 8px; }
+        .preset-card {
+            padding: 10px;
+            display: grid;
+            grid-template-columns: 32px 1fr;
+            gap: 9px;
+            text-align: left;
+            background: #172338;
+        }
+        .preset-card.active { border-color: var(--green); background: #143325; }
+        .preset-icon { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; background: rgba(255,255,255,.07); }
+        .preset-copy strong { display: block; margin-bottom: 2px; font-size: 12px; }
+        .preset-copy span { color: var(--muted); font-size: 10px; line-height: 1.3; }
+
+        .ownership-card {
+            margin-top: 12px;
+            padding: 10px;
+            border: 1px solid #2d3d57;
+            border-radius: 9px;
+            background: #0e1725;
+            color: #adbed5;
+            font-size: 10px;
+            line-height: 1.45;
+        }
+
+        .note-editor-list { display: grid; gap: 7px; }
+        .note-editor-row {
+            display: grid;
+            grid-template-columns: 48px 1fr;
+            gap: 8px;
+            align-items: center;
+            padding: 8px;
+            border: 1px solid #293a53;
+            border-radius: 9px;
+            background: #142035;
+        }
+        .note-chip { font-weight: 850; font-size: 12px; }
+        .editor-fingers { display: flex; gap: 4px; }
+        .editor-fingers button { flex: 1; min-width: 0; height: 27px; padding: 0; font-size: 10px; }
+        .editor-fingers button.active { border-color: var(--amber); background: #6b4b12; }
+
+        .mode-segment {
+            display: flex;
+            padding: 3px;
+            border: 1px solid #33455f;
+            border-radius: 10px;
+            background: #10192a;
+        }
+        .mode-segment button { padding: 5px 9px; border: 0; background: transparent; font-size: 10px; }
+        .mode-segment button.active { background: #285f9f; }
+
+        .coach-card {
+            position: absolute;
+            z-index: 30;
+            left: 50%;
+            bottom: 157px;
+            width: min(520px, calc(100% - 30px));
+            transform: translateX(-50%);
+            padding: 13px;
+            border: 1px solid #3c567a;
+            border-radius: 14px;
+            background: rgba(13, 23, 39, .96);
+            box-shadow: 0 12px 36px rgba(0,0,0,.38);
+        }
+
+        .coach-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+        .coach-copy { margin: 4px 0 11px; color: #b6c5db; font-size: 11px; line-height: 1.4; }
+        .coach-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+        .coach-answer { display: flex; align-items: center; gap: 8px; }
+        .answer-token { padding: 8px 12px; border-radius: 9px; background: #1b3454; color: #d7e9ff; font-size: 13px; font-weight: 900; }
+        .miss-counter { color: #ffdda0; font-size: 10px; }
+
+        .coach-settings {
+            position: absolute;
+            z-index: 45;
+            top: 55px;
+            right: 14px;
+            width: 310px;
+            padding: 14px;
+            border: 1px solid #435879;
+            border-radius: 12px;
+            background: #111c2d;
+            box-shadow: var(--shadow);
+        }
+
+        .teach-tray {
+            position: absolute;
+            z-index: 36;
+            left: 20px;
+            right: 20px;
+            bottom: 148px;
+            padding: 13px;
+            border: 1px solid #705d32;
+            border-radius: 13px;
+            background: rgba(35, 29, 17, .97);
+            box-shadow: var(--shadow);
+        }
+        .teach-tray-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 9px; }
+        .passage-notes { display: grid; grid-template-columns: repeat(6, 1fr); gap: 7px; }
+        .passage-note { padding: 7px; border-radius: 9px; background: rgba(255,255,255,.055); text-align: center; }
+        .passage-note strong { display: block; margin-bottom: 5px; font-size: 12px; }
+
+        .prototype-switcher {
+            position: fixed;
+            z-index: 100;
+            left: 50%;
+            bottom: 12px;
+            transform: translateX(-50%);
+            min-width: 420px;
+            display: grid;
+            grid-template-columns: 42px 1fr 42px;
+            align-items: center;
+            gap: 9px;
+            padding: 8px;
+            border: 1px solid #5f7392;
+            border-radius: 999px;
+            background: #f2f6fc;
+            color: #101828;
+            box-shadow: 0 12px 35px rgba(0,0,0,.5);
+        }
+
+        .switch-arrow { height: 36px; padding: 0; border-color: #b9c6d8; background: white; color: #172033; font-size: 18px; }
+        .switch-label { text-align: center; }
+        .switch-label strong { display: block; font-size: 12px; }
+        .switch-label span { display: block; margin-top: 1px; color: #526178; font-size: 9px; }
+
+        @media (max-width: 1100px) {
+            .workspace { grid-template-columns: 1fr; padding-right: 14px; }
+            .state-inspector {
+                position: fixed;
+                z-index: 80;
+                top: 62px;
+                right: 20px;
+                width: 270px;
+                max-height: calc(100vh - 155px);
+                box-shadow: var(--shadow);
+                opacity: .94;
+            }
+            .state-inspector h1 { font-size: 15px; }
+            .tradeoffs { display: none; }
+            .split-view { grid-template-columns: minmax(0, 1fr) 295px; }
+        }
+
+        @media (max-width: 760px) {
+            body { overflow: auto; }
+            .workspace { min-width: 680px; }
+            .state-inspector { display: none; }
+            .prototype-switcher { min-width: 360px; }
+        }
+    </style>
+</head>
+<body>
+    <main class="workspace">
+        <section class="app-frame" aria-label="Interactive Openthesia learner guidance prototype">
+            <div id="variant-root"></div>
+        </section>
+        <aside class="state-inspector" aria-label="Prototype state inspector">
+            <p class="eyebrow">Issue 12 · prototype state</p>
+            <h1 id="variant-title"></h1>
+            <p class="summary" id="variant-summary"></p>
+            <div class="tradeoffs" id="variant-tradeoffs"></div>
+            <div class="persistence-key" aria-label="Persistence ownership legend">
+                <span class="owner-chip">Chart · shared hints</span>
+                <span class="owner-chip">Learner + Chart · personal choices</span>
+                <span class="owner-chip">Practice Session · temporary</span>
+            </div>
+            <div class="state-title">
+                <h2>Full relevant state</h2>
+                <button class="reset-button" type="button" data-action="reset">Reset variant</button>
+            </div>
+            <pre id="state-json"></pre>
+        </aside>
+    </main>
+
+    <nav class="prototype-switcher" aria-label="Prototype variant switcher">
+        <button class="switch-arrow" type="button" data-cycle="-1" aria-label="Previous variant">←</button>
+        <div class="switch-label">
+            <strong id="switcher-label"></strong>
+            <span>Use ← → · state is intentionally not persisted</span>
+        </div>
+        <button class="switch-arrow" type="button" data-cycle="1" aria-label="Next variant">→</button>
+    </nav>
+
+    <script>
+        const variantDefinitions = {
+            A: {
+                name: "Compact popover",
+                summary: "Keep the Performance Visualization full-size. One Guidance pill progressively reveals the common controls, advanced notation, and direct-on-note fingering edits.",
+                tradeoffs: [
+                    "Best preservation of the existing canvas and top-bar mental model.",
+                    "Advanced systems stay out of a beginner’s way, but the small entry point may be missed.",
+                    "Direct editing is fast in context, though edit mode must be unmistakable."
+                ]
+            },
+            B: {
+                name: "Practice drawer",
+                summary: "Turn guidance into a visible Practice workspace: beginner presets first, detailed controls and a chart-level fingering editor in a dedicated side drawer.",
+                tradeoffs: [
+                    "Most discoverable and easiest to explain to a new Learner.",
+                    "The visualization shrinks while configuring guidance.",
+                    "Presets make good defaults easy; fine-grained systems remain one level deeper."
+                ]
+            },
+            C: {
+                name: "Contextual coach",
+                summary: "Keep guidance absent until a Learner asks or misses notes. Reveal only the required note/finger, with a separate passage tray for authoring hints.",
+                tradeoffs: [
+                    "Lowest visual load and strongest separation from Performance Visualization.",
+                    "Harder to discover every available label system.",
+                    "Adaptive help can feel supportive, but automatic reveal needs a trustworthy trigger."
+                ]
+            }
+        };
+
+        const initialStates = {
+            A: {
+                surface: "Compact popover",
+                practiceMode: "Wait for correct notes",
+                panelOpen: true,
+                fallingLabel: "English note names",
+                keyLabel: "Octave C markers",
+                fingering: "Shared Chart hints",
+                scope: "Learner notes only",
+                labelSize: "Medium",
+                accidentalSpelling: "Use Song spelling",
+                advancedOpen: false,
+                editingFingerHints: false,
+                selectedNote: null,
+                viewPersistence: "Remember for this Chart",
+                sharedFingerHints: { n1: 1, n2: 3, n3: 5, n4: 2, n5: 4, n6: 1 },
+                personalOverrides: {}
+            },
+            B: {
+                surface: "Practice drawer",
+                practiceMode: "Wait for correct notes",
+                drawerMode: "presets",
+                preset: "Read notes",
+                fallingLabel: "English note names",
+                keyLabel: "Simplified A–G",
+                fingering: "Off",
+                scope: "Learner notes only",
+                labelSize: "Large",
+                editOwnership: "Shared Chart hints",
+                viewPersistence: "Remember for this Chart",
+                sharedFingerHints: { n1: 1, n2: 3, n3: 5, n4: 2, n5: 4, n6: 1 },
+                personalOverrides: {}
+            },
+            C: {
+                surface: "Contextual coach",
+                screenMode: "Practice",
+                practiceMode: "Wait for correct notes",
+                assistance: "On request",
+                hintReveal: "none",
+                labelSystem: "Scientific pitch",
+                misses: 0,
+                coachSettingsOpen: false,
+                teachTrayOpen: false,
+                editOwnership: "Shared Chart hints",
+                viewPersistence: "This Practice Session only",
+                scope: "Required notes only",
+                sharedFingerHints: { n1: 1, n2: 3, n3: 5, n4: 2, n5: 4, n6: 1 },
+                personalOverrides: {}
+            }
+        };
+
+        const stateByVariant = structuredClone(initialStates);
+
+        const notes = [
+            { id: "n1", left: 12, bottom: 2, height: 34, hand: "left", pitch: "C", scientific: "C3", degree: "1", fixedDo: "Do", movableDo: "Do", required: false, learner: true },
+            { id: "n2", left: 25, bottom: 23, height: 25, hand: "left", pitch: "G", scientific: "G3", degree: "5", fixedDo: "Sol", movableDo: "Sol", required: false, learner: true },
+            { id: "n3", left: 43, bottom: 6, height: 29, hand: "right", pitch: "E", scientific: "E4", degree: "3", fixedDo: "Mi", movableDo: "Mi", required: true, learner: true },
+            { id: "n4", left: 54, bottom: 38, height: 22, hand: "right", pitch: "F♯", scientific: "F♯4", degree: "♯4", fixedDo: "Fi", movableDo: "Fi", required: false, learner: true },
+            { id: "n5", left: 68, bottom: 18, height: 36, hand: "right", pitch: "A", scientific: "A4", degree: "6", fixedDo: "La", movableDo: "La", required: false, learner: true },
+            { id: "n6", left: 80, bottom: 51, height: 27, hand: "right", pitch: "C", scientific: "C5", degree: "1", fixedDo: "Do", movableDo: "Do", required: false, learner: true },
+            { id: "n7", left: 34, bottom: 67, height: 20, hand: "left", pitch: "D", scientific: "D4", degree: "2", fixedDo: "Re", movableDo: "Re", required: false, learner: false },
+            { id: "n8", left: 60, bottom: 76, height: 18, hand: "right", pitch: "G", scientific: "G4", degree: "5", fixedDo: "Sol", movableDo: "Sol", required: false, learner: false }
+        ];
+
+        const whiteKeyNames = ["C3","D3","E3","F3","G3","A3","B3","C4","D4","E4","F4","G4","A4","B4","C5","D5","E5","F5","G5","A5","B5"];
+        const keyLetters = whiteKeyNames.map(name => name[0]);
+        const keyDegrees = ["1","2","3","4","5","6","7","1","2","3","4","5","6","7","1","2","3","4","5","6","7"];
+        const keySolfege = ["Do","Re","Mi","Fa","Sol","La","Ti","Do","Re","Mi","Fa","Sol","La","Ti","Do","Re","Mi","Fa","Sol","La","Ti"];
+        const typingKeys = ["","","","","","","","A","S","D","F","G","H","J","K","","","","","",""];
+        const blackKeyAfter = [0,1,3,4,5,7,8,10,11,12,14,15,17,18,19];
+
+        function currentVariant() {
+            const requested = new URLSearchParams(window.location.search).get("variant")?.toUpperCase();
+            return variantDefinitions[requested] ? requested : "A";
+        }
+
+        function setVariant(key) {
+            const url = new URL(window.location.href);
+            url.searchParams.set("variant", key);
+            try {
+                history.replaceState({}, "", url);
+                render();
+            } catch {
+                window.location.search = url.search;
+            }
+        }
+
+        function cycleVariant(delta) {
+            const keys = Object.keys(variantDefinitions);
+            const index = keys.indexOf(currentVariant());
+            setVariant(keys[(index + delta + keys.length) % keys.length]);
+        }
+
+        function option(value, label, current) {
+            return `<option value="${value}" ${value === current ? "selected" : ""}>${label}</option>`;
+        }
+
+        function selectField(field, current, choices, label) {
+            return `<div class="field"><label for="${field}">${label}</label><select id="${field}" data-field="${field}">${choices.map(choice => option(choice[0], choice[1], current)).join("")}</select></div>`;
+        }
+
+        const fallingLabelChoices = [
+            ["Off", "Off"],
+            ["English note names", "English note names · C♯"],
+            ["Scientific pitch", "Scientific pitch · C♯4"],
+            ["Scale degrees", "Scale degrees · 1 2 3"],
+            ["Fixed-Do solfège", "Fixed-Do solfège · Do Re Mi"],
+            ["Movable-Do solfège", "Movable-Do solfège · Do Re Mi"]
+        ];
+
+        const keyLabelChoices = [
+            ["Off", "Off"],
+            ["Octave C markers", "Octave C markers"],
+            ["Simplified A–G", "Simplified A–G on white keys"],
+            ["Scale degrees", "Scale degrees"],
+            ["Fixed-Do solfège", "Fixed-Do solfège"],
+            ["Movable-Do solfège", "Movable-Do solfège"],
+            ["Typing-key mapping", "Typing-key mapping"]
+        ];
+
+        const fingeringChoices = [
+            ["Off", "Off"],
+            ["Shared Chart hints", "Shared Chart hints"],
+            ["Personal overrides", "My personal overrides"],
+            ["Shared + personal", "Shared hints + my overrides"]
+        ];
+
+        function noteText(note, system) {
+            switch (system) {
+                case "English note names": return note.pitch;
+                case "Scientific pitch": return note.scientific;
+                case "Scale degrees": return note.degree;
+                case "Fixed-Do solfège": return note.fixedDo;
+                case "Movable-Do solfège": return note.movableDo;
+                default: return "";
+            }
+        }
+
+        function keyText(index, system) {
+            switch (system) {
+                case "Octave C markers": return keyLetters[index] === "C" ? whiteKeyNames[index] : "";
+                case "Simplified A–G": return keyLetters[index];
+                case "Scale degrees": return keyDegrees[index];
+                case "Fixed-Do solfège":
+                case "Movable-Do solfège": return keySolfege[index];
+                case "Typing-key mapping": return typingKeys[index];
+                default: return "";
+            }
+        }
+
+        function activeFinger(note, state) {
+            if (state.fingering === "Off") return null;
+            if (state.fingering === "Personal overrides") return state.personalOverrides[note.id] ?? null;
+            if (state.fingering === "Shared + personal") return state.personalOverrides[note.id] ?? state.sharedFingerHints[note.id] ?? null;
+            return state.sharedFingerHints[note.id] ?? null;
+        }
+
+        function renderNotes(state, variant) {
+            return notes.map(note => {
+                let system = state.fallingLabel ?? "Off";
+                let showFinger = state.fingering !== "Off";
+
+                if (variant !== "C" && state.scope === "Learner notes only" && !note.learner) {
+                    system = "Off";
+                    showFinger = false;
+                }
+                if (variant !== "C" && state.scope === "Required note only" && !note.required) {
+                    system = "Off";
+                    showFinger = false;
+                }
+
+                if (variant === "C") {
+                    system = state.hintReveal === "note" || state.hintReveal === "both" ? state.labelSystem : "Off";
+                    showFinger = state.hintReveal === "finger" || state.hintReveal === "both";
+                    if (!note.required) { system = "Off"; showFinger = false; }
+                }
+
+                let label = noteText(note, system);
+                if (state.accidentalSpelling === "Prefer flats") label = label.replaceAll("F♯", "G♭").replaceAll("♯4", "♭5");
+                const finger = showFinger
+                    ? (variant === "C" ? (state.personalOverrides[note.id] ?? state.sharedFingerHints[note.id]) : activeFinger(note, state))
+                    : null;
+                const selected = state.selectedNote === note.id;
+                const editable = state.editingFingerHints || state.teachTrayOpen;
+                const classes = ["note", `hand-${note.hand}`, note.required ? "is-required" : "", selected ? "is-selected" : "", !label && !finger ? "no-label" : ""].filter(Boolean).join(" ");
+                const labelFontSize = { Small: "10px", Medium: "13px", Large: "16px" }[state.labelSize] ?? "13px";
+                return `<button type="button" class="${classes}" data-note-id="${note.id}" aria-label="${note.scientific}${finger ? `, finger ${finger}` : ""}" style="left:${note.left}%;bottom:${note.bottom}%;height:${note.height}%;font-size:${labelFontSize};${editable ? "cursor:crosshair" : ""}">
+                    ${label ? `<span class="note-label">${label}</span>` : ""}
+                    ${finger ? `<span class="finger-label">${finger}</span>` : ""}
+                </button>`;
+            }).join("");
+        }
+
+        function renderKeyboard(state, variant) {
+            let system = state.keyLabel ?? "Off";
+            const showRequired = variant === "C" && state.screenMode === "Practice";
+            if (variant === "C") system = state.hintReveal === "note" || state.hintReveal === "both" ? "Simplified A–G" : "Off";
+            const whites = whiteKeyNames.map((name, index) => {
+                const required = showRequired && name === "E4";
+                const label = variant === "C" && !required ? "" : keyText(index, system);
+                return `<button type="button" class="white-key ${required ? "required-key" : ""}" aria-label="Piano key ${name}"><span class="key-label">${label}</span></button>`;
+            }).join("");
+            const blacks = blackKeyAfter.map(index => {
+                const left = ((index + 1) / 21 * 100) - 1.65;
+                return `<span class="black-key" style="left:${left}%"></span>`;
+            }).join("");
+            return `<div class="keyboard">${whites}${blacks}</div>`;
+        }
+
+        function renderTransport() {
+            return `<div class="transport" aria-hidden="true"><button class="transport-button" type="button">Ⅱ</button><span>0:42</span><span class="timeline"></span><span>2:11</span><button class="transport-button" type="button">↺</button></div>`;
+        }
+
+        function renderVisualStage(state, variant, overlays = "") {
+            return `<div class="visual-stage">
+                <div class="notes-field">${renderNotes(state, variant)}</div>
+                <div class="strike-line"></div>
+                ${renderTransport()}
+                ${renderKeyboard(state, variant)}
+                ${overlays}
+            </div>`;
+        }
+
+        function renderWindowBar(extra = "", center = `<span class="mode-badge">● Wait for correct notes</span>`) {
+            return `<header class="window-bar">
+                <div class="brand"><span class="logo-dot">O</span><span>Openthesia</span><span class="song-title">Ode to Joy · Practice</span></div>
+                ${center}
+                <div class="toolbar-actions">${extra}</div>
+            </header>`;
+        }
+
+        function fingerPalette(state, noteId = state.selectedNote) {
+            const current = noteId ? (state.personalOverrides[noteId] ?? state.sharedFingerHints[noteId]) : null;
+            return `<div class="finger-palette" aria-label="Finger number">
+                ${[1,2,3,4,5].map(finger => `<button type="button" class="finger-choice ${current === finger ? "active" : ""}" data-action="set-finger" data-finger="${finger}" ${noteId ? `data-note-id="${noteId}"` : "disabled"}>${finger}</button>`).join("")}
+            </div>`;
+        }
+
+        function renderVariantA(state) {
+            const summary = state.fallingLabel === "Off" && state.fingering === "Off"
+                ? "Guidance off"
+                : `${state.fallingLabel === "Off" ? "No labels" : state.fallingLabel}${state.fingering === "Off" ? "" : " + fingers"}`;
+
+            const popover = state.panelOpen ? `<section class="popover" aria-label="Guidance settings">
+                <h2>Guidance</h2>
+                <p class="popover-subtitle">Common choices first. Changes affect the current mock Practice Session immediately.</p>
+                <div class="form-grid">
+                    ${selectField("fallingLabel", state.fallingLabel, fallingLabelChoices, "On falling notes")}
+                    ${selectField("keyLabel", state.keyLabel, keyLabelChoices, "On piano keys")}
+                    ${selectField("fingering", state.fingering, fingeringChoices, "Finger numbers · thumb 1 → pinky 5")}
+                    ${selectField("scope", state.scope, [["Learner notes only","Learner notes only"],["Both hands","Both hands"],["Required note only","Required note only"]], "Apply to")}
+                    <button type="button" class="subtle-button" data-action="toggle" data-target="advancedOpen">${state.advancedOpen ? "Hide" : "Show"} notation details</button>
+                    ${state.advancedOpen ? `<div class="advanced-box">
+                        ${selectField("labelSize", state.labelSize, [["Small","Small"],["Medium","Medium"],["Large","Large"]], "Label size")}
+                        ${selectField("accidentalSpelling", state.accidentalSpelling, [["Use Song spelling","Use Song spelling"],["Prefer sharps","Prefer sharps"],["Prefer flats","Prefer flats"]], "Accidental spelling")}
+                    </div>` : ""}
+                    ${selectField("viewPersistence", state.viewPersistence, [["This Practice Session only","This Practice Session only"],["Remember for this Chart","Remember for this Chart"],["Default for this Learner","Default for this Learner"]], "Remember my view")}
+                    <div class="inline-row">
+                        <span class="tiny-badge">Chart hints are shared</span>
+                        <button type="button" class="primary-button" data-action="toggle-edit">${state.editingFingerHints ? "Finish editing" : "Edit finger hints"}</button>
+                    </div>
+                </div>
+            </section>` : "";
+
+            const editor = state.editingFingerHints ? `<div class="editing-banner">
+                <span><strong>Edit finger hints:</strong> choose a falling note, then 1 (thumb)–5 (pinky).</span>
+                ${fingerPalette(state)}
+                <button type="button" class="subtle-button" data-action="toggle-edit">Done</button>
+            </div>` : "";
+
+            return `<div class="variant-screen variant-a">
+                ${renderWindowBar(`<button type="button" class="guidance-pill" data-action="toggle" data-target="panelOpen"><span class="status-dot"></span><span>${summary}</span><span>${state.panelOpen ? "▴" : "▾"}</span></button>`)}
+                <div class="corner-hypothesis"><strong>A · Compact popover</strong><br>Progressive disclosure from one top-bar control; the canvas never resizes.</div>
+                ${renderVisualStage(state, "A", editor)}
+                ${popover}
+            </div>`;
+        }
+
+        function renderPreset(name, icon, description, state) {
+            return `<button type="button" class="preset-card ${state.preset === name ? "active" : ""}" data-action="preset" data-preset="${name}">
+                <span class="preset-icon">${icon}</span><span class="preset-copy"><strong>${name}</strong><span>${description}</span></span>
+            </button>`;
+        }
+
+        function renderDrawerPresets(state) {
+            return `<div class="preset-list">
+                ${renderPreset("Clean", "◌", "No labels or finger numbers; pure visualization.", state)}
+                ${renderPreset("Read notes", "A♯", "Names on notes and A–G labels on white keys.", state)}
+                ${renderPreset("Learn fingering", "☝", "Shared finger hints with quiet octave markers.", state)}
+                ${renderPreset("Custom", "⚙", "Use the Fine tune tab for independent choices.", state)}
+            </div>
+            <div class="ownership-card"><strong>Remembered for this Chart</strong><br>This preset is a personal practice choice owned by the Learner + Chart. It does not change shared Chart hints.</div>`;
+        }
+
+        function renderDrawerFineTune(state) {
+            return `<div class="form-grid">
+                ${selectField("fallingLabel", state.fallingLabel, fallingLabelChoices, "Falling-note labels")}
+                ${selectField("keyLabel", state.keyLabel, keyLabelChoices, "Piano-key labels")}
+                ${selectField("fingering", state.fingering, fingeringChoices, "Finger numbers")}
+                ${selectField("scope", state.scope, [["Learner notes only","Learner notes only"],["Both hands","Both hands"],["Required note only","Required note only"]], "Visibility")}
+                ${selectField("labelSize", state.labelSize, [["Small","Small"],["Medium","Medium"],["Large","Large"]], "Label size")}
+                ${selectField("viewPersistence", state.viewPersistence, [["This Practice Session only","This Practice Session only"],["Remember for this Chart","Remember for this Chart"],["Default for this Learner","Default for this Learner"]], "Remember this setup")}
+            </div>`;
+        }
+
+        function renderDrawerEditor(state) {
+            return `<div class="form-grid">
+                ${selectField("editOwnership", state.editOwnership, [["Shared Chart hints","Shared Chart hints · visible to every Learner"],["Personal overrides","My personal overrides · Learner + Chart"]], "Editing")}
+                <div class="note-editor-list">
+                    ${notes.slice(0,6).map(note => {
+                        const source = state.editOwnership === "Personal overrides" ? state.personalOverrides : state.sharedFingerHints;
+                        const current = source[note.id];
+                        return `<div class="note-editor-row"><span class="note-chip">${note.scientific}</span><span class="editor-fingers">${[1,2,3,4,5].map(finger => `<button type="button" class="${current === finger ? "active" : ""}" data-action="set-finger" data-note-id="${note.id}" data-finger="${finger}">${finger}</button>`).join("")}</span></div>`;
+                    }).join("")}
+                </div>
+                <div class="ownership-card"><strong>Editing boundary</strong><br>Shared recommendations belong to the Chart. A Learner’s alternative fingering belongs to Learner + Chart and wins only for that Learner.</div>
+            </div>`;
+        }
+
+        function renderVariantB(state) {
+            const center = `<span class="mode-badge">Practice setup · ${state.preset}</span>`;
+            const drawerBody = state.drawerMode === "presets" ? renderDrawerPresets(state) : state.drawerMode === "fine" ? renderDrawerFineTune(state) : renderDrawerEditor(state);
+            return `<div class="variant-screen variant-b">
+                ${renderWindowBar(`<span class="tiny-badge">Guidance drawer open</span>`, center)}
+                <div class="split-view">
+                    ${renderVisualStage(state, "B", `<div class="corner-hypothesis"><strong>B · Practice drawer</strong><br>Start with named presets; details and authoring live in a stable workspace.</div>`)}
+                    <aside class="drawer" aria-label="Practice guidance drawer">
+                        <h2>Practice guidance</h2>
+                        <p class="popover-subtitle">Choose a simple setup, then fine-tune only if you need to.</p>
+                        <div class="drawer-tabs">
+                            <button type="button" class="drawer-tab ${state.drawerMode === "presets" ? "active" : ""}" data-action="drawer-mode" data-mode="presets">Quick setup</button>
+                            <button type="button" class="drawer-tab ${state.drawerMode === "fine" ? "active" : ""}" data-action="drawer-mode" data-mode="fine">Fine tune</button>
+                            <button type="button" class="drawer-tab ${state.drawerMode === "editor" ? "active" : ""}" data-action="drawer-mode" data-mode="editor">Finger editor</button>
+                        </div>
+                        ${drawerBody}
+                    </aside>
+                </div>
+            </div>`;
+        }
+
+        function renderCoachCard(state) {
+            if (state.screenMode !== "Practice" || state.teachTrayOpen) return "";
+            if (state.hintReveal === "none") {
+                return `<section class="coach-card">
+                    <div class="coach-head"><div><h2>Need a hint?</h2><p class="coach-copy">Reveal only what helps with the required note. The rest of the visualization stays clean.</p></div><span class="miss-counter">${state.misses} misses</span></div>
+                    <div class="coach-actions">
+                        <button type="button" class="primary-button" data-action="reveal" data-reveal="note">Show note name</button>
+                        <button type="button" class="subtle-button" data-action="reveal" data-reveal="finger">Show finger</button>
+                        <button type="button" class="subtle-button" data-action="miss">Demo a miss</button>
+                    </div>
+                </section>`;
+            }
+            const showNote = state.hintReveal === "note" || state.hintReveal === "both";
+            const showFinger = state.hintReveal === "finger" || state.hintReveal === "both";
+            const required = notes.find(note => note.required);
+            const finger = state.personalOverrides[required.id] ?? state.sharedFingerHints[required.id];
+            return `<section class="coach-card">
+                <div class="coach-head"><div><h2>Next note</h2><p class="coach-copy">This hint applies only to the required note and clears after it is played.</p></div><button type="button" class="subtle-button" data-action="clear-hint">Hide</button></div>
+                <div class="coach-answer">
+                    ${showNote ? `<span class="answer-token">${noteText(required, state.labelSystem)}</span>` : ""}
+                    ${showFinger ? `<span class="answer-token">Finger ${finger}</span>` : ""}
+                    ${!showNote ? `<button type="button" class="subtle-button" data-action="reveal" data-reveal="both">Add note name</button>` : ""}
+                    ${!showFinger ? `<button type="button" class="subtle-button" data-action="reveal" data-reveal="both">Add finger</button>` : ""}
+                    <button type="button" class="primary-button" data-action="played-correct">Demo correct note</button>
+                </div>
+            </section>`;
+        }
+
+        function renderCoachSettings(state) {
+            if (!state.coachSettingsOpen) return "";
+            return `<section class="coach-settings" aria-label="Coach settings">
+                <h2>Hint behavior</h2>
+                <p class="popover-subtitle">These choices stay behind the Practice-only coach.</p>
+                <div class="form-grid">
+                    ${selectField("assistance", state.assistance, [["On request","On request"],["After 2 misses","After 2 misses"],["Always for required notes","Always for required notes"]], "Offer hints")}
+                    ${selectField("labelSystem", state.labelSystem, fallingLabelChoices.filter(choice => choice[0] !== "Off"), "When revealing a note")}
+                    ${selectField("viewPersistence", state.viewPersistence, [["This Practice Session only","This Practice Session only"],["Remember for this Chart","Remember for this Chart"],["Default for this Learner","Default for this Learner"]], "Remember hint behavior")}
+                    <button type="button" class="subtle-button" data-action="open-teach">Teach finger hints for this passage</button>
+                </div>
+            </section>`;
+        }
+
+        function renderTeachTray(state) {
+            if (!state.teachTrayOpen || state.screenMode !== "Practice") return "";
+            return `<section class="teach-tray" aria-label="Passage fingering editor">
+                <div class="teach-tray-head"><div><strong>Teach this passage</strong> <span class="owner-chip">${state.editOwnership}</span></div><button type="button" class="subtle-button" data-action="toggle" data-target="teachTrayOpen">Done</button></div>
+                <div class="inline-row" style="margin-bottom:9px">${selectField("editOwnership", state.editOwnership, [["Shared Chart hints","Shared Chart hints"],["Personal overrides","My personal overrides"]], "Save as")}</div>
+                <div class="passage-notes">
+                    ${notes.slice(0,6).map(note => {
+                        const source = state.editOwnership === "Personal overrides" ? state.personalOverrides : state.sharedFingerHints;
+                        const current = source[note.id];
+                        return `<div class="passage-note"><strong>${note.scientific}</strong><span class="editor-fingers">${[1,2,3,4,5].map(finger => `<button type="button" class="${current === finger ? "active" : ""}" data-action="set-finger" data-note-id="${note.id}" data-finger="${finger}">${finger}</button>`).join("")}</span></div>`;
+                    }).join("")}
+                </div>
+            </section>`;
+        }
+
+        function renderVariantC(state) {
+            const center = `<div class="mode-segment"><button type="button" class="${state.screenMode === "Practice" ? "active" : ""}" data-action="screen-mode" data-mode="Practice">Practice</button><button type="button" class="${state.screenMode === "Performance Visualization" ? "active" : ""}" data-action="screen-mode" data-mode="Performance Visualization">Visualization</button></div>`;
+            const extra = state.screenMode === "Practice" ? `<button type="button" class="subtle-button" data-action="toggle" data-target="coachSettingsOpen">Hint settings ···</button>` : `<span class="tiny-badge">Guidance hidden</span>`;
+            const overlays = `<div class="corner-hypothesis"><strong>C · Contextual coach</strong><br>Practice can reveal just-in-time help. Performance Visualization never carries learner guidance.</div>${renderCoachCard(state)}${renderTeachTray(state)}`;
+            return `<div class="variant-screen variant-c">
+                ${renderWindowBar(extra, center)}
+                ${renderVisualStage(state, "C", overlays)}
+                ${renderCoachSettings(state)}
+            </div>`;
+        }
+
+        function render() {
+            const key = currentVariant();
+            const state = stateByVariant[key];
+            const definition = variantDefinitions[key];
+            const root = document.getElementById("variant-root");
+            root.innerHTML = key === "A" ? renderVariantA(state) : key === "B" ? renderVariantB(state) : renderVariantC(state);
+            document.getElementById("variant-title").textContent = `${key} — ${definition.name}`;
+            document.getElementById("variant-summary").textContent = definition.summary;
+            document.getElementById("variant-tradeoffs").innerHTML = definition.tradeoffs.map(item => `<div class="tradeoff">${item}</div>`).join("");
+            document.getElementById("switcher-label").textContent = `${key} — ${definition.name}`;
+            document.getElementById("state-json").textContent = JSON.stringify({ variant: key, ...state }, null, 2);
+        }
+
+        function setFinger(state, noteId, finger) {
+            if (!noteId) return;
+            const target = state.editOwnership === "Personal overrides" || state.fingering === "Personal overrides"
+                ? state.personalOverrides
+                : state.sharedFingerHints;
+            target[noteId] = finger;
+            state.selectedNote = noteId;
+        }
+
+        document.addEventListener("click", event => {
+            const cycle = event.target.closest("[data-cycle]");
+            if (cycle) {
+                cycleVariant(Number(cycle.dataset.cycle));
+                return;
+            }
+
+            const actionTarget = event.target.closest("[data-action]");
+            const key = currentVariant();
+            const state = stateByVariant[key];
+
+            if (actionTarget) {
+                const action = actionTarget.dataset.action;
+                if (action === "reset") stateByVariant[key] = structuredClone(initialStates[key]);
+                if (action === "toggle") state[actionTarget.dataset.target] = !state[actionTarget.dataset.target];
+                if (action === "open-teach") Object.assign(state, { teachTrayOpen: true, coachSettingsOpen: false });
+                if (action === "toggle-edit") {
+                    state.editingFingerHints = !state.editingFingerHints;
+                    state.panelOpen = !state.editingFingerHints;
+                    if (!state.editingFingerHints) state.selectedNote = null;
+                }
+                if (action === "set-finger") setFinger(state, actionTarget.dataset.noteId ?? state.selectedNote, Number(actionTarget.dataset.finger));
+                if (action === "drawer-mode") state.drawerMode = actionTarget.dataset.mode;
+                if (action === "preset") {
+                    state.preset = actionTarget.dataset.preset;
+                    if (state.preset === "Clean") Object.assign(state, { fallingLabel: "Off", keyLabel: "Off", fingering: "Off" });
+                    if (state.preset === "Read notes") Object.assign(state, { fallingLabel: "English note names", keyLabel: "Simplified A–G", fingering: "Off" });
+                    if (state.preset === "Learn fingering") Object.assign(state, { fallingLabel: "Off", keyLabel: "Octave C markers", fingering: "Shared Chart hints" });
+                    if (state.preset === "Custom") state.drawerMode = "fine";
+                }
+                if (action === "reveal") state.hintReveal = actionTarget.dataset.reveal;
+                if (action === "clear-hint") state.hintReveal = "none";
+                if (action === "played-correct") Object.assign(state, { hintReveal: "none", misses: 0 });
+                if (action === "miss") {
+                    state.misses += 1;
+                    if (state.assistance === "After 2 misses" && state.misses >= 2) state.hintReveal = "both";
+                }
+                if (action === "screen-mode") {
+                    state.screenMode = actionTarget.dataset.mode;
+                    if (state.screenMode === "Performance Visualization") Object.assign(state, { hintReveal: "none", coachSettingsOpen: false, teachTrayOpen: false });
+                }
+                render();
+                return;
+            }
+
+            const note = event.target.closest("[data-note-id]");
+            if (note && state.editingFingerHints) {
+                state.selectedNote = note.dataset.noteId;
+                render();
+            }
+        });
+
+        document.addEventListener("change", event => {
+            const field = event.target.closest("[data-field]");
+            if (!field) return;
+            const state = stateByVariant[currentVariant()];
+            state[field.dataset.field] = field.type === "checkbox" ? field.checked : field.value;
+            if (currentVariant() === "B") state.preset = "Custom";
+            if (currentVariant() === "C" && state.assistance === "Always for required notes") state.hintReveal = "both";
+            render();
+        });
+
+        document.addEventListener("keydown", event => {
+            const tag = event.target.tagName;
+            if (["INPUT", "TEXTAREA", "SELECT"].includes(tag) || event.target.isContentEditable) return;
+            if (event.key === "ArrowLeft") { event.preventDefault(); cycleVariant(-1); }
+            if (event.key === "ArrowRight") { event.preventDefault(); cycleVariant(1); }
+        });
+
+        window.addEventListener("popstate", render);
+        render();
+    </script>
+</body>
+</html>
