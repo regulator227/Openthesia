@@ -12,7 +12,6 @@ public class HomeWindow : ImGuiWindow
 {
     private const string _title = "OPENTHESIA";
     private Vector2 _logoSize = new(250, 250);
-    private Vector2 _btnHoverOffset = new(2);
     private Vector2 _titleShadowOffset = new(3);
     private Vector2 _buttonsShadowOffset = new(4);
     private Vector2 _buttonsSize = new(300, 50);
@@ -71,7 +70,6 @@ public class HomeWindow : ImGuiWindow
 
         if (btnHoverRef)
         {
-            ImGui.SetCursorPos(ImGui.GetCursorPos() + _btnHoverOffset);
             // Draw shadow rectangle
             Vector2 buttonPosScreen = ImGui.GetCursorScreenPos();
             Vector2 shadowPosScreen = buttonPosScreen + _buttonsShadowOffset;
