@@ -1,0 +1,9 @@
+# Keep Practice Score read-only and Chart-centered
+
+Openthesia will offer a **Practice Score** as a synchronized, read-only staff-notation view for Chart-based Practice Sessions, not as a notation editor or publishing engine. The first useful release will generate a visibly identified, conservative **Score Interpretation** from existing Charts and offer Piano Roll, Split, and Practice Score views; later MusicXML support will add read-only local sources that preserve a declared practice-oriented subset of authored notation.
+
+A Chart may own multiple generated or imported Score Interpretations without changing its pattern-based identity. The selected interpretation and view belong to Learner + Chart, with compatible authored MusicXML preferred by default and new imports never silently replacing an established selection. Staff placement is notation layout rather than Hand Assignment, while Hand Assignments continue to control practice requirements, colors, and highlighting.
+
+The initial renderer is limited to essential grand-staff notation in a continuous horizontal layout, synchronized highlighting, and click-to-seek navigation. It may apply deterministic display-only quantization, but it must not change playback or Chart identity; low-confidence output is labelled and may fall back to Piano Roll. MusicXML import is transactional when pitch or timing cannot be trusted, while unsupported optional notation may be omitted with visible diagnostics.
+
+Notation editing, publication-quality engraving, printing, score export, and lossless MusicXML round-tripping are outside this boundary. Fingering, loops, bookmarks, metronome markers, scoring feedback, and accessibility overlays remain owned by their respective roadmap decisions and may integrate through later Practice Score overlays.
