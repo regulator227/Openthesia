@@ -1,5 +1,6 @@
 ﻿using MeltySynth;
 using NAudio.Wave;
+using Openthesia.Core.Audio;
 using Openthesia.Core.Midi;
 using Openthesia.Enums;
 using Openthesia.Settings;
@@ -15,11 +16,9 @@ public class SoundFontPlayer
     private MidiSampleProvider _midiSampleProvider;
     public MidiSampleProvider MidiSampleProvider => _midiSampleProvider;
 
-    private WaveOutEvent _waveOut;
-    public WaveOutEvent WaveOut => _waveOut;
-
-    private AsioOut _asioOut;
-    public AsioOut AsioOut => _asioOut;
+    private AudioOutputSession _output;
+    public WaveOutEvent? WaveOut => _output.WaveOut;
+    public AsioOut? AsioOut => _output.AsioOut;
 
     private static string _activeSoundFont = string.Empty;
     public static string ActiveSoundFont => _activeSoundFont;
@@ -54,25 +53,7 @@ public class SoundFontPlayer
 
         _midiSampleProvider = new MidiSampleProvider(_synthesizer);
 
-        if (AudioDriverManager.AudioDriverType == AudioDriverTypes.WaveOut)
-        {
-            _asioOut?.Stop();
-            _asioOut?.Dispose();
-
-            _waveOut = new WaveOutEvent();
-            _waveOut.DesiredLatency = CoreSettings.WaveOutLatency;
-            _waveOut.Init(_midiSampleProvider);
-            _waveOut.Play();
-        }
-        else if (AudioDriverManager.AudioDriverType == AudioDriverTypes.ASIO)
-        {
-            _waveOut?.Stop();
-            _waveOut?.Dispose();
-
-            _asioOut = new AsioOut(AudioDriverManager.SelectedAsioDriverName);
-            _asioOut.Init(_midiSampleProvider);
-            _asioOut.Play();
-        }
+        _output = AudioDriverManager.StartSelectedOutput(_midiSampleProvider, _output);
     }
 
     public static void Initialize()
@@ -101,15 +82,7 @@ public class SoundFontPlayer
 
     public void ChangeLatency(int newLatency)
     {
-        bool isRunning = _waveOut.PlaybackState == PlaybackState.Playing || _waveOut.PlaybackState == PlaybackState.Paused;
-        if (isRunning)
-        {
-            _waveOut.Stop();
-        }
-
-        _waveOut.DesiredLatency = newLatency;
-        _waveOut.Init(_midiSampleProvider);
-        _waveOut.Play();
+        _output.ChangeWaveOutLatency(newLatency, _midiSampleProvider);
     }
 
     public static void LoadSoundFont(string soundFontPath, int sampleRate = 44100)
