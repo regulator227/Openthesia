@@ -70,4 +70,8 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Openthesia.Tests" />
+  </ItemGroup>
+
 </Project>

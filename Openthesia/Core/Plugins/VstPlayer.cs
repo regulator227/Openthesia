@@ -2,8 +2,8 @@
 using NAudio.Mixer;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
+using Openthesia.Core.Audio;
 using Openthesia.Core.SoundFonts;
-using Openthesia.Enums;
 using Openthesia.Settings;
 using System;
 using System.Collections.Generic;
@@ -17,11 +17,9 @@ public static class VstPlayer
 {
     private static MixingSampleProvider _mixingSampleProvider;
 
-    private static WaveOutEvent _waveOut;
-    public static WaveOutEvent WaveOut => _waveOut;
-
-    private static AsioOut _asioOut;
-    public static AsioOut AsioOut => _asioOut;
+    private static AudioOutputSession _output;
+    public static WaveOutEvent? WaveOut => _output.WaveOut;
+    public static AsioOut? AsioOut => _output.AsioOut;
 
     public static PluginsChain? PluginsChain { get; private set; }
 
@@ -40,46 +38,11 @@ public static class VstPlayer
         PluginsChain = new PluginsChain(mixer);
         _mixingSampleProvider.AddMixerInput(PluginsChain);
 
-        if (AudioDriverManager.AudioDriverType == AudioDriverTypes.WaveOut)
-        {
-            _asioOut?.Stop();
-            _asioOut?.Dispose();
-
-            _waveOut = new WaveOutEvent();
-            _waveOut.DesiredLatency = CoreSettings.WaveOutLatency;
-            _waveOut.Init(_mixingSampleProvider);
-            _waveOut.Play();
-        }
-        else if (AudioDriverManager.AudioDriverType == AudioDriverTypes.ASIO)
-        {
-            _waveOut?.Stop();
-            _waveOut?.Dispose();
-
-            if (AudioDriverManager.TryCreateAsioOut(out _asioOut))
-            {
-                _asioOut.Init(_mixingSampleProvider);
-                _asioOut.Play();
-            }
-            else
-            {
-                _waveOut = new WaveOutEvent();
-                _waveOut.DesiredLatency = CoreSettings.WaveOutLatency;
-                _waveOut.Init(_mixingSampleProvider);
-                _waveOut.Play();
-            }
-        }
+        _output = AudioDriverManager.StartSelectedOutput(_mixingSampleProvider, _output);
     }
 
     public static void ChangeLatency(int newLatency)
     {
-        bool isRunning = _waveOut.PlaybackState == PlaybackState.Playing || _waveOut.PlaybackState == PlaybackState.Paused;
-        if (isRunning)
-        {
-            _waveOut.Stop();
-        }
-
-        _waveOut.DesiredLatency = newLatency;
-        _waveOut.Init(_mixingSampleProvider);
-        _waveOut.Play();
+        _output.ChangeWaveOutLatency(newLatency, _mixingSampleProvider);
     }
 }

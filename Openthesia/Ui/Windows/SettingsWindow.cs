@@ -247,7 +247,7 @@ public class SettingsWindow : ImGuiWindow
                 if (ImGui.Button("ASIO settings"))
                 {
                     if (CoreSettings.SoundEngine == Enums.SoundEngine.SoundFonts)
-                        MidiPlayer.SoundFontEngine?.AsioOut.ShowControlPanel();
+                        MidiPlayer.SoundFontEngine?.AsioOut?.ShowControlPanel();
                     else if (CoreSettings.SoundEngine == Enums.SoundEngine.Plugins)
                         VstPlayer.AsioOut?.ShowControlPanel();
                 }
