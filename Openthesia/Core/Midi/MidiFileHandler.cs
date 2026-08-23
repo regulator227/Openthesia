@@ -3,6 +3,7 @@ using Melanchall.DryWetMidi.Interaction;
 using Melanchall.DryWetMidi.Multimedia;
 using Openthesia.Core.FileDialogs;
 using Openthesia.Core.Plugins;
+using Openthesia.Core.Practice;
 using Openthesia.Core.Songs;
 using Openthesia.Settings;
 using Vanara.PInvoke;
@@ -48,7 +49,7 @@ public static class MidiFileHandler
 
     private static void LoadMidiFileCore(MidiFile midiFile)
     {
-
+        MidiPracticeSession.Deactivate();
         MidiFileData.MidiFile = midiFile;
         MidiFileData.TempoMap = midiFile.GetTempoMap();
         MidiFileData.Notes = ChartPattern.GetCanonicalNotes(midiFile)

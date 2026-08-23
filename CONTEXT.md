@@ -12,12 +12,30 @@ _Avoid_: Student, user, account, device
 The Learner whose personal learning data applies to the current use of Openthesia. Selecting the Active Learner is a Device Setting.
 
 **Practice Session**:
-A learner's focused attempt to improve part or all of a song, including any guidance and feedback received during that attempt.
+A Learner's single comparable attempt to improve a fixed range of a Chart under one Practice Mode and one evaluation-relevant configuration. It ends completed or abandoned; restarting or changing an evaluation-relevant choice begins another Practice Session.
 _Avoid_: Lesson, run
 
 **Practice Mode**:
-A defined pattern of guidance and feedback applied during a Practice Session, such as waiting for correct notes or evaluating performance in time.
+A named policy for how Chart time, guidance, and feedback behave during a Practice Session. Hand choice, accompaniment, tempo, range, guidance preset, and visual view configure a Practice Session but are not Practice Modes.
 _Avoid_: Game mode, playback mode
+
+**Wait for Notes**:
+A Practice Mode in which Chart time waits until the Learner supplies the required notes.
+_Avoid_: Learning Mode, Melody Practice, Play Along
+
+**Play in Time**:
+A Practice Mode in which Chart time continues while the Learner receives visible guidance and performance feedback.
+_Avoid_: Rhythm Practice
+
+**Recital**:
+A Practice Mode in which Chart time continues with minimal guidance and performance feedback is deferred until the attempt ends.
+
+**Practice Target**:
+The set of unique pitches from the Required Hands that share one normalized Chart onset in Wait for Notes. It is satisfied by distinct note attacks made after it becomes due.
+
+**Practice Event**:
+An ordered fact emitted during a Practice Session about lifecycle, Learner input, Practice Targets, or assistance. It records what happened without assigning a score or updating Practice Progress itself.
+_Avoid_: Score event, analytics event
 
 **Song**:
 A musical work available for learning. A Song has a stable identity and one or more Charts.
@@ -34,6 +52,14 @@ _Avoid_: Song, Chart
 **Hand Assignment**:
 A Chart-owned classification of its notes as left-hand or right-hand parts, shared by all Learners.
 _Avoid_: Staff placement, fingering
+
+**Required Hands**:
+The left hand, right hand, or both Hand Assignment parts that the Learner must perform during a Practice Session.
+_Avoid_: Active hands, enabled hands
+
+**Accompaniment**:
+Automatic playback of Chart notes outside the Required Hands during a Practice Session. It may be automatic or silent and is not a Practice Mode.
+_Avoid_: Backing track, disabled hand
 
 **Song Metadata**:
 Shared descriptive facts that apply to a Song across all of its Charts.

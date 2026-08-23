@@ -3,6 +3,7 @@ using Melanchall.DryWetMidi.Core;
 using Melanchall.DryWetMidi.Multimedia;
 using Openthesia.Core.Midi;
 using Openthesia.Core.Plugins;
+using Openthesia.Core.Practice;
 using Openthesia.Settings;
 using Openthesia.Ui;
 
@@ -115,7 +116,10 @@ public static class IOHandle
         switch (eType)
         {
             case MidiEventType.NoteOn:
-                OnNoteOn((NoteOnEvent)e.Event);
+                var noteOn = (NoteOnEvent)e.Event;
+                if (!CoreSettings.VelocityZeroIsNoteOff || noteOn.Velocity != 0)
+                    MidiPracticeSession.ObserveNoteOn(noteOn.NoteNumber, noteOn.Velocity);
+                OnNoteOn(noteOn);
                 break;
             case MidiEventType.NoteOff:
                 OnNoteOff((NoteOffEvent)e.Event);
@@ -139,10 +143,6 @@ public static class IOHandle
 
     public static void OnEventReceived(object sender, MidiEventPlayedEventArgs e)
     {
-        // return in learning mode to prevent key presses
-        if (ScreenCanvasControls.IsLearningMode)
-            return;
-
         if (CoreSettings.SoundEngine == Enums.SoundEngine.Plugins)
         {
             VstPlayer.PluginsChain?.PluginInstrument?.ReceiveMidiEvent(e.Event);

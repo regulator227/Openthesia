@@ -8,13 +8,12 @@ public static class ScreenCanvasControls
     private static bool _lockTopBar = true;
     private static bool _upDirection;
     private static bool _showTextNotes;
-    private static bool _isLearningMode;
     private static bool _isEditMode;
 
     public static bool LockTopBar => _lockTopBar;
     public static bool UpDirection => _upDirection;
     public static bool ShowTextNotes => _showTextNotes;
-    public static bool IsLearningMode => _isLearningMode;
+    public static bool IsPracticeMode => Openthesia.Core.Practice.MidiPracticeSession.IsActive;
     public static bool IsEditMode => _isEditMode;
     public static bool LeftHandActive { get; set; } = true;
 
@@ -25,11 +24,6 @@ public static class ScreenCanvasControls
     public static float FallSpeedVal => _fallSpeedVal;
     public static FallSpeeds FallSpeed { get; private set; } = FallSpeeds.Default;
     public static TextTypes TextType { get; private set; } = TextTypes.Velocity;
-
-    public static void SetLearningMode(bool onoff)
-    {
-        _isLearningMode = onoff;
-    }
 
     public static void SetEditMode(bool onoff)
     {
