@@ -1,6 +1,7 @@
 ﻿using Melanchall.DryWetMidi.Multimedia;
 using Newtonsoft.Json;
 using Openthesia.Core.Plugins;
+using Openthesia.Core.Songs;
 using Openthesia.Core.SoundFonts;
 using Openthesia.Settings;
 using Syroot.Windows.IO;
@@ -12,14 +13,28 @@ public static class ProgramData
 {
     public const string ProgramVersion = "1.5.3";
     public static IntPtr LogoImage;
-    public static string SettingsPath = Path.Combine(KnownFolders.RoamingAppData.Path, "Openthesia", "Settings.json");
-    public static string HandsDataPath = Path.Combine(KnownFolders.RoamingAppData.Path, "Openthesia\\HandsData");
+    public static string DataPath = Path.Combine(KnownFolders.RoamingAppData.Path, "Openthesia");
+    public static string SettingsPath = Path.Combine(DataPath, "Settings.json");
+    public static string HandsDataPath = Path.Combine(DataPath, "HandsData");
+    public static LearnerProfile? ActiveLearner { get; private set; }
 
     public static void Initialize()
     {
-        Directory.CreateDirectory(Path.Combine(KnownFolders.RoamingAppData.Path, "Openthesia"));
+        Directory.CreateDirectory(DataPath);
         Directory.CreateDirectory(HandsDataPath);
         LoadSettings();
+        try
+        {
+            ActiveLearner = new LearnerRegistry(DataPath).GetOrCreateActive();
+        }
+        catch (Exception exception)
+        {
+            User32.MessageBox(
+                IntPtr.Zero,
+                $"{exception.Message}\n\nLearner metadata was preserved and was not updated.",
+                "Couldn't load Learner metadata",
+                User32.MB_FLAGS.MB_ICONERROR | User32.MB_FLAGS.MB_TOPMOST);
+        }
         ImGuiTheme.PushTheme();
 
         // Always create the SoundFonts directory if it doesn't exist (this is mainly for when building from source)

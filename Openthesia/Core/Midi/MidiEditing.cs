@@ -1,5 +1,7 @@
 ﻿using System.Xml.Serialization;
 using Vanara.PInvoke;
+using Openthesia.Core.Songs;
+using Openthesia.Settings;
 
 namespace Openthesia.Core.Midi;
 
@@ -12,44 +14,51 @@ public static class MidiEditing
 
     public static void ReadData()
     {
-        string filePath = Path.Combine(ProgramData.HandsDataPath, MidiFileData.FileName.Replace(".mid", string.Empty) + ".xml");
-        if (!File.Exists(filePath))
+        if (MidiFileData.Context is not { SourcePath: not null } context)
             return;
 
-        try
+        var legacyCandidate = new LegacyHandAssignmentLocator(
+            ProgramData.DataPath,
+            ProgramData.HandsDataPath,
+            MidiPathsManager.MidiPaths).Find(context.SourcePath) with
         {
-            using (FileStream fileStream = new(filePath, FileMode.Open))
-            {
-                XmlSerializer xmlSerializer = new(typeof(LeftRightData));
-                LeftRightData leftRightData = (LeftRightData)xmlSerializer.Deserialize(fileStream);
-                LeftRightData.S_IsRightNote = leftRightData.IsRightNote;
-            }
-        }
-        catch (Exception ex)
-        {
-            User32.MessageBox(IntPtr.Zero, $"{ex.Message}", "Couldn't read hands data", User32.MB_FLAGS.MB_ICONERROR | User32.MB_FLAGS.MB_TOPMOST);
-        }
+            CanonicalToLegacyNoteIndices = ChartPattern
+                .GetCanonicalNotes(MidiFileData.MidiFile)
+                .Select(note => note.SourceIndex)
+                .ToArray()
+        };
+        var result = new ChartHandAssignmentStore(ProgramData.DataPath).Load(
+            context.ChartId,
+            MidiFileData.Notes.Count(),
+            legacyCandidate);
+        LeftRightData.S_IsRightNote = result.Hands
+            .Select(hand => hand == PianoHand.Right)
+            .ToList();
+        ShowWarning(result.Warning, "Couldn't read Hand Assignments");
     }
 
     public static void SaveData()
     {
-        string filePath = Path.Combine(ProgramData.HandsDataPath, MidiFileData.FileName.Replace(".mid", string.Empty) + ".xml");
-        LeftRightData leftRightData = new()
-        {
-            IsRightNote = LeftRightData.S_IsRightNote
-        };
+        if (MidiFileData.Context is not { SourcePath: not null } context)
+            return;
 
-        try
-        {
-            using (FileStream fileStream = new FileStream(filePath, FileMode.Create))
-            {
-                XmlSerializer xmlSerializer = new XmlSerializer(typeof(LeftRightData));
-                xmlSerializer.Serialize(fileStream, leftRightData);
-            }
-        }
-        catch (Exception ex)
-        {
-            User32.MessageBox(IntPtr.Zero, $"{ex.Message}", "Couldn't save hands data", User32.MB_FLAGS.MB_ICONERROR | User32.MB_FLAGS.MB_TOPMOST);
-        }
+        var result = new ChartHandAssignmentStore(ProgramData.DataPath).Save(
+            context.ChartId,
+            LeftRightData.S_IsRightNote
+                .Select(isRight => isRight ? PianoHand.Right : PianoHand.Left)
+                .ToArray());
+        ShowWarning(result.Warning, "Couldn't save Hand Assignments");
+    }
+
+    private static void ShowWarning(string? warning, string title)
+    {
+        if (warning is null)
+            return;
+
+        User32.MessageBox(
+            IntPtr.Zero,
+            warning,
+            title,
+            User32.MB_FLAGS.MB_ICONWARNING | User32.MB_FLAGS.MB_TOPMOST);
     }
 }
