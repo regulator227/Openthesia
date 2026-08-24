@@ -1,0 +1,1149 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Openthesia Issue 20 — Practice Navigation Prototype</title>
+    <!--
+      PROTOTYPE ONLY — throwaway logic demo for regulator227/Openthesia issue #20.
+      Open this single file directly in a browser. It persists nothing and is not
+      included in the application build.
+    -->
+    <style>
+        :root {
+            color-scheme: dark;
+            font-family: Inter, "Segoe UI", system-ui, sans-serif;
+            --page: #071019;
+            --panel: #101b28;
+            --panel-2: #152334;
+            --panel-3: #1b2d42;
+            --border: #2a4058;
+            --text: #f4f7fb;
+            --muted: #9eb0c5;
+            --blue: #4bb3fd;
+            --blue-soft: #143b58;
+            --green: #45d483;
+            --green-soft: #143a29;
+            --amber: #f1be62;
+            --amber-soft: #3d2d14;
+            --red: #ff7187;
+            --red-soft: #3d1b24;
+            --violet: #ab8cff;
+            --shadow: 0 22px 60px rgba(0, 0, 0, .34);
+        }
+
+        * { box-sizing: border-box; }
+        html, body { margin: 0; min-height: 100%; background: var(--page); color: var(--text); }
+        body { padding: 24px; }
+        button, input, select { font: inherit; }
+        button, input, select {
+            min-height: 38px;
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            color: var(--text);
+            background: #182a3e;
+        }
+        button { padding: 8px 12px; cursor: pointer; font-weight: 720; }
+        button:hover { border-color: #6688ad; background: #203650; }
+        button:focus-visible, input:focus-visible, select:focus-visible {
+            outline: 3px solid rgba(75, 179, 253, .42);
+            outline-offset: 2px;
+        }
+        input, select { width: 100%; padding: 7px 9px; }
+        h1, h2, h3, p { margin-top: 0; }
+        h1 { margin-bottom: 8px; font-size: clamp(25px, 3vw, 38px); }
+        h2 { margin-bottom: 12px; font-size: 18px; }
+        h3 { margin-bottom: 8px; font-size: 14px; }
+        p { color: var(--muted); line-height: 1.55; }
+        code { color: #d9eaff; }
+
+        .shell { width: min(1480px, 100%); margin: 0 auto; }
+        .intro {
+            display: grid;
+            grid-template-columns: minmax(0, 1.45fr) minmax(320px, .75fr);
+            gap: 18px;
+            margin-bottom: 18px;
+        }
+        .intro-copy, .decision-card, .state-card, .control-card, .walkthroughs {
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            background: var(--panel);
+            box-shadow: var(--shadow);
+        }
+        .intro-copy { padding: 24px; }
+        .prototype-label {
+            display: inline-flex;
+            margin-bottom: 12px;
+            padding: 6px 9px;
+            border: 1px dashed #8c6c34;
+            border-radius: 8px;
+            color: #ffdc98;
+            background: #312510;
+            font-size: 11px;
+            font-weight: 850;
+            letter-spacing: .08em;
+        }
+        .question {
+            margin: 14px 0 0;
+            padding: 13px 14px;
+            border-left: 3px solid var(--blue);
+            border-radius: 0 9px 9px 0;
+            color: #dceaff;
+            background: #102638;
+            font-size: 14px;
+        }
+        .decision-card { padding: 19px; }
+        .decision-card ul { margin: 0; padding-left: 19px; color: #dce5ef; }
+        .decision-card li { margin: 7px 0; line-height: 1.42; font-size: 12px; }
+
+        .state-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+        .state-card { min-width: 0; padding: 16px; }
+        .state-card h2 { display: flex; align-items: center; gap: 8px; }
+        .state-card h2::before {
+            content: "";
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: var(--blue);
+            box-shadow: 0 0 0 5px rgba(75, 179, 253, .12);
+        }
+        .state-card[data-tone="green"] h2::before { background: var(--green); box-shadow: 0 0 0 5px rgba(69, 212, 131, .12); }
+        .state-card[data-tone="amber"] h2::before { background: var(--amber); box-shadow: 0 0 0 5px rgba(241, 190, 98, .12); }
+        .state-card[data-tone="violet"] h2::before { background: var(--violet); box-shadow: 0 0 0 5px rgba(171, 140, 255, .12); }
+        .field-list { display: grid; gap: 8px; }
+        .field {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            padding-bottom: 7px;
+            border-bottom: 1px solid rgba(67, 91, 119, .48);
+            font-size: 12px;
+        }
+        .field:last-child { padding-bottom: 0; border-bottom: 0; }
+        .field span { color: var(--muted); }
+        .field strong { max-width: 60%; text-align: right; overflow-wrap: anywhere; }
+        .phase-pill {
+            display: inline-flex;
+            padding: 4px 8px;
+            border-radius: 999px;
+            color: #dff9e9;
+            background: var(--green-soft);
+            font-size: 11px;
+        }
+        .phase-pill[data-phase="Stopped"], .phase-pill[data-phase="Paused"] { color: #d9e1ea; background: #263445; }
+        .phase-pill[data-phase="Count-in"] { color: #ffe6ac; background: var(--amber-soft); }
+        .phase-pill[data-phase="Completed"] { color: #eadfff; background: #322650; }
+        .empty { color: #6f8299; font-style: italic; }
+        .mini-list { display: grid; gap: 6px; }
+        .mini-item {
+            padding: 7px 8px;
+            border: 1px solid #2b425d;
+            border-radius: 8px;
+            color: #dbe5f0;
+            background: #122033;
+            font-size: 11px;
+        }
+        .mini-item.active { border-color: var(--green); background: var(--green-soft); }
+
+        .change-banner {
+            display: flex;
+            align-items: center;
+            gap: 11px;
+            min-height: 54px;
+            margin-bottom: 18px;
+            padding: 11px 15px;
+            border: 1px solid #38597a;
+            border-radius: 12px;
+            color: #dfedfb;
+            background: #10253a;
+        }
+        .change-banner strong { color: var(--blue); white-space: nowrap; }
+        .change-banner span { font-size: 13px; }
+
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+            margin-bottom: 18px;
+        }
+        .control-card { padding: 17px; }
+        .control-card > p { margin-bottom: 13px; font-size: 12px; }
+        .form-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
+        .form-field label { display: block; margin-bottom: 5px; color: var(--muted); font-size: 11px; }
+        .button-row { display: flex; flex-wrap: wrap; gap: 8px; }
+        .button-row + .button-row { margin-top: 8px; }
+        .primary { border-color: #328ed0; background: #176fae; }
+        .success { border-color: #318b58; background: #1e6d45; }
+        .warning { border-color: #9a7335; background: #60451d; }
+        .danger { border-color: #934456; background: #652a39; }
+        .quiet { color: #ccdae8; background: #142335; }
+        .inline-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 9px; }
+        .selection-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 9px; }
+        .transport-position { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 10px; }
+
+        .walkthroughs { padding: 19px; }
+        .tab-row { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 14px; }
+        .tab { color: #bdcce0; background: #142337; }
+        .tab.active { border-color: var(--violet); color: #f1ecff; background: #392c5c; }
+        .scenario {
+            display: grid;
+            grid-template-columns: minmax(250px, .75fr) minmax(0, 1.65fr);
+            gap: 16px;
+            padding: 16px;
+            border: 1px solid #304963;
+            border-radius: 12px;
+            background: var(--panel-2);
+        }
+        .scenario p { margin-bottom: 0; font-size: 12px; }
+        .steps { display: flex; flex-wrap: wrap; align-content: start; gap: 8px; }
+        .step { position: relative; padding-left: 34px; text-align: left; }
+        .step::before {
+            content: attr(data-step);
+            position: absolute;
+            left: 9px;
+            top: 50%;
+            width: 18px;
+            height: 18px;
+            display: grid;
+            place-items: center;
+            transform: translateY(-50%);
+            border-radius: 50%;
+            color: #dcecff;
+            background: #27425f;
+            font-size: 10px;
+        }
+        .step.done { opacity: .52; }
+        .step.done::before { content: "✓"; color: #dff9e9; background: #236443; }
+        .step.next { border-color: var(--violet); box-shadow: 0 0 0 2px rgba(171, 140, 255, .16); }
+        .history {
+            max-height: 190px;
+            margin-top: 14px;
+            overflow: auto;
+            border: 1px solid #2b4259;
+            border-radius: 10px;
+            background: #0d1724;
+        }
+        .history-row {
+            display: grid;
+            grid-template-columns: 34px 1fr;
+            gap: 8px;
+            padding: 8px 10px;
+            border-bottom: 1px solid #22374d;
+            font-size: 11px;
+        }
+        .history-row:last-child { border-bottom: 0; }
+        .history-row span { color: var(--muted); text-align: right; }
+
+        @media (max-width: 1100px) {
+            .intro { grid-template-columns: 1fr; }
+            .state-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 760px) {
+            body { padding: 12px; }
+            .state-grid, .controls, .form-grid, .scenario { grid-template-columns: 1fr; }
+            .field strong { max-width: 54%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <section class="intro">
+            <div class="intro-copy">
+                <span class="prototype-label">PROTOTYPE ONLY · ISSUE 20 · IN-MEMORY</span>
+                <h1>Practice navigation and timing controls</h1>
+                <p>This logic demo lets a Learner create loops and bookmarks, move around a Chart, and feel how count-in and metronome choices interact with a Practice Session.</p>
+                <p class="question"><strong>Question under test:</strong> How should loops, bookmarks, count-in, and metronome controls behave across Practice Modes, Required Hands, tempo changes, seeking, loop repeats, and restarts after errors?</p>
+            </div>
+            <aside class="decision-card">
+                <h2>Working decisions to challenge</h2>
+                <ul>
+                    <li>Loops and bookmarks are personal Chart navigation, never Practice Modes.</li>
+                    <li>An enabled loop defines the fixed Practice Range; every pass is a new Practice Session.</li>
+                    <li>A bookmark outside the loop disables the loop and makes the new attempt assisted.</li>
+                    <li>Count-in freezes Chart time before starts, restarts, and discontinuous resumes.</li>
+                    <li>Count-in clicks are independent of the during-practice metronome toggle.</li>
+                    <li>Mode, Required Hands, tempo, and range changes restart the comparable attempt; metronome and future count-in settings do not.</li>
+                </ul>
+            </aside>
+        </section>
+
+        <section class="state-grid" aria-label="Current practice state">
+            <article class="state-card" data-tone="green">
+                <h2>Practice Session</h2>
+                <div id="session-state" class="field-list"></div>
+            </article>
+            <article class="state-card">
+                <h2>Practice setup</h2>
+                <div id="setup-state" class="field-list"></div>
+            </article>
+            <article class="state-card" data-tone="amber">
+                <h2>Loops</h2>
+                <div id="loop-state" class="mini-list"></div>
+            </article>
+            <article class="state-card" data-tone="violet">
+                <h2>Bookmarks</h2>
+                <div id="bookmark-state" class="mini-list"></div>
+            </article>
+        </section>
+
+        <div class="change-banner" role="status">
+            <strong>What just changed</strong>
+            <span id="last-change">Prototype ready.</span>
+        </div>
+
+        <section class="controls" aria-label="Free-play controls">
+            <article class="control-card">
+                <h2>1. Practice setup</h2>
+                <p>These controls stay separate. Mode, Required Hands, and tempo change the comparable setup; metronome and count-in tune guidance.</p>
+                <div class="form-grid">
+                    <div class="form-field">
+                        <label for="mode">Practice Mode</label>
+                        <select id="mode">
+                            <option>Wait for Notes</option>
+                            <option>Play in Time</option>
+                            <option>Recital</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="hands">Required Hands</label>
+                        <select id="hands">
+                            <option>Both</option>
+                            <option>Left</option>
+                            <option>Right</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="tempo">Tempo</label>
+                        <select id="tempo">
+                            <option value="50">50%</option>
+                            <option value="75">75%</option>
+                            <option value="100">100%</option>
+                            <option value="125">125%</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="count-in">Count-in</label>
+                        <select id="count-in">
+                            <option value="0">Off</option>
+                            <option value="2">2 beats</option>
+                            <option value="4">1 bar</option>
+                            <option value="8">2 bars</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="metronome">Metronome</label>
+                        <select id="metronome">
+                            <option value="on">On</option>
+                            <option value="off">Off</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="loop-count-in">Each loop pass</label>
+                        <select id="loop-count-in">
+                            <option value="off">No count-in</option>
+                            <option value="on">Count in</option>
+                        </select>
+                    </div>
+                </div>
+            </article>
+
+            <article class="control-card">
+                <h2>2. Transport and Learner input</h2>
+                <p>Advance one beat at a time; the state shows the tempo-dependent click cadence. Wait for Notes advances only when the required notes are supplied, and errors never restart automatically.</p>
+                <div class="transport-position">
+                    <input id="seek-position" type="number" min="0" max="31" step="1" value="0" aria-label="Chart beat">
+                    <button id="seek" class="quiet">Seek to beat</button>
+                </div>
+                <div class="button-row">
+                    <button id="start" class="primary">Start Practice</button>
+                    <button id="pause">Pause</button>
+                    <button id="resume">Resume</button>
+                    <button id="tick" class="success">Advance one beat</button>
+                    <button id="stop" class="quiet">Stop</button>
+                </div>
+                <div class="button-row">
+                    <button id="correct" class="success">Supply required notes</button>
+                    <button id="error" class="danger">Make an error</button>
+                    <button id="restart" class="warning">Restart after error</button>
+                    <button id="reset" class="quiet">Reset prototype</button>
+                </div>
+            </article>
+
+            <article class="control-card">
+                <h2>3. Loops</h2>
+                <p>Mark boundaries at the playhead, or use “End after playhead” to include the current/final beat. Save a named loop, then enable it; editing an enabled loop starts a new Practice Session at its new range.</p>
+                <div class="inline-form">
+                    <input id="loop-name" value="Tricky phrase" aria-label="Loop name">
+                    <button id="save-loop" class="primary">Save loop</button>
+                </div>
+                <div class="button-row">
+                    <button id="mark-loop-start">Mark start</button>
+                    <button id="mark-loop-end">Mark end</button>
+                    <button id="mark-loop-end-after">End after playhead</button>
+                    <button id="clear-loop-draft" class="quiet">Clear marks</button>
+                </div>
+                <div class="selection-row">
+                    <select id="loop-selection" aria-label="Selected loop"></select>
+                    <button id="toggle-loop" class="success">Enable / disable</button>
+                </div>
+                <div class="button-row">
+                    <button id="go-loop-start">Go to loop start</button>
+                    <button id="rename-loop">Rename from field</button>
+                    <button id="loop-start-back">Start −1</button>
+                    <button id="loop-start-forward">Start +1</button>
+                    <button id="loop-end-back">End −1</button>
+                    <button id="loop-end-forward">End +1</button>
+                    <button id="delete-loop" class="danger">Delete loop</button>
+                </div>
+            </article>
+
+            <article class="control-card">
+                <h2>4. Bookmarks</h2>
+                <p>Bookmarks are named personal waypoints. Navigating to one is a seek; moving outside an enabled loop turns that loop off instead of silently clamping the destination.</p>
+                <div class="inline-form">
+                    <input id="bookmark-name" value="Verse" aria-label="Bookmark name">
+                    <button id="add-bookmark" class="primary">Add at playhead</button>
+                </div>
+                <div class="selection-row">
+                    <select id="bookmark-selection" aria-label="Selected bookmark"></select>
+                    <button id="go-bookmark" class="success">Go</button>
+                </div>
+                <div class="button-row">
+                    <button id="previous-bookmark">Previous</button>
+                    <button id="next-bookmark">Next</button>
+                    <button id="rename-bookmark">Rename from field</button>
+                    <button id="move-bookmark">Move to playhead</button>
+                    <button id="delete-bookmark" class="danger">Delete</button>
+                </div>
+            </article>
+        </section>
+
+        <section class="walkthroughs">
+            <h2>Guided walkthroughs</h2>
+            <p>Each tab resets the model. Press the highlighted steps in order and watch the full state above after every action.</p>
+            <div id="scenario-tabs" class="tab-row"></div>
+            <div class="scenario">
+                <div>
+                    <h3 id="scenario-title"></h3>
+                    <p id="scenario-description"></p>
+                </div>
+                <div id="scenario-steps" class="steps"></div>
+            </div>
+            <div id="history" class="history" aria-label="Recent state changes"></div>
+        </section>
+    </div>
+
+    <script>
+        const PracticeNavigationModel = (() => {
+            const MODES = Object.freeze({
+                WAIT: "Wait for Notes",
+                TIME: "Play in Time",
+                RECITAL: "Recital"
+            });
+
+            const clone = value => JSON.parse(JSON.stringify(value));
+            const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, value));
+            const isActive = state => !["Stopped", "Completed"].includes(state.transport.phase);
+            const practicePhase = mode => mode === MODES.WAIT ? "Waiting for Notes" : "Running";
+            const activeLoop = state => state.loops.find(loop => loop.id === state.activeLoopId && loop.enabled) || null;
+            const practiceRange = state => {
+                const loop = activeLoop(state);
+                return loop
+                    ? { start: loop.start, end: loop.end, label: loop.name }
+                    : { start: 0, end: state.chart.durationBeats, label: "Full Chart" };
+            };
+            const record = (state, message) => {
+                state.lastChange = message;
+                state.history.unshift({ number: state.historySequence++, message });
+                state.history = state.history.slice(0, 14);
+                return state;
+            };
+            const tempoBpm = state => Math.round(state.chart.baseTempoBpm * state.setup.tempoPercent / 100);
+            const beatDurationMs = state => Math.round(60000 / tempoBpm(state));
+            const cadence = state => `${tempoBpm(state)} BPM · ${beatDurationMs(state)} ms/beat`;
+            const practiceProgressEligibility = state => {
+                if (state.session.number === 0)
+                    return "Not assessed";
+                if (state.session.status === "In progress")
+                    return "Pending completion";
+                if (state.session.status === "Abandoned")
+                    return "Not eligible · incomplete";
+                return state.session.assisted ? "Not eligible · assisted" : "Eligible";
+            };
+            const closeSession = (state, outcome, reason) => {
+                if (state.session.number === 0 || state.session.status !== "In progress")
+                    return;
+                state.session.status = outcome;
+                state.session.lastEnded = `#${state.session.number} ${outcome}${reason ? ` · ${reason}` : ""}`;
+            };
+            const enterPractice = (state, countInBeats, reason) => {
+                state.transport.countInRemaining = countInBeats;
+                state.transport.phase = countInBeats > 0 ? "Count-in" : practicePhase(state.setup.mode);
+                state.transport.resumeNeedsCountIn = false;
+                state.transport.lastCue = countInBeats > 0
+                    ? `Count-in ready: ${countInBeats} click${countInBeats === 1 ? "" : "s"} · ${cadence(state)}`
+                    : state.setup.metronome ? `Metronome ready · ${cadence(state)}` : "No timing cue";
+                return record(state, reason);
+            };
+            const startAttempt = (state, options = {}) => {
+                const range = practiceRange(state);
+                const start = options.start ?? range.start;
+                closeSession(state, options.previousOutcome || "Abandoned", options.previousReason || "superseded by a new attempt");
+                state.session.number += 1;
+                state.session.status = "In progress";
+                state.session.rangeStart = range.start;
+                state.session.rangeEnd = range.end;
+                state.session.assisted = Boolean(options.assisted);
+                state.session.errors = 0;
+                state.session.loopPass = options.loopPass ?? 1;
+                state.session.setup = `${state.setup.mode} · ${state.setup.requiredHands} · ${state.setup.tempoPercent}%`;
+                state.transport.position = clamp(start, 0, state.chart.durationBeats);
+                const countIn = options.useCountIn === false ? 0 : state.guidance.countInBeats;
+                return enterPractice(state, countIn, options.reason || `Practice Session ${state.session.number} started.`);
+            };
+            const restartForComparableChange = (state, reason) => {
+                if (!isActive(state))
+                    return record(state, `${reason} It will apply to the next Practice Session.`);
+                return startAttempt(state, {
+                    previousReason: reason.replace(/\.$/, ""),
+                    reason: `${reason} Practice Session ${state.session.number + 1} restarted at the Practice Range start.`
+                });
+            };
+            const repeatOrComplete = state => {
+                const loop = activeLoop(state);
+                if (!loop) {
+                    state.transport.position = state.chart.durationBeats;
+                    state.transport.phase = "Completed";
+                    state.transport.lastCue = "Chart complete";
+                    closeSession(state, "Completed", "full Chart completed");
+                    return record(state, `Practice Session ${state.session.number} completed the full Chart.`);
+                }
+                const nextPass = state.session.loopPass + 1;
+                return startAttempt(state, {
+                    loopPass: nextPass,
+                    useCountIn: state.guidance.countInOnLoopRepeat,
+                    previousOutcome: "Completed",
+                    previousReason: `loop pass ${state.session.loopPass} completed`,
+                    reason: `Loop pass ${nextPass} began as Practice Session ${state.session.number + 1}${state.guidance.countInOnLoopRepeat ? " with count-in" : " without count-in"}.`
+                });
+            };
+            const moveForward = state => {
+                const range = practiceRange(state);
+                const next = state.transport.position + 1;
+                if (next >= range.end)
+                    return repeatOrComplete(state);
+                state.transport.position = next;
+                state.transport.lastCue = state.setup.metronome ? `Metronome click · ${cadence(state)}` : "Metronome silent";
+                return record(state, `Chart time advanced to ${formatBeat(next)}.`);
+            };
+            const seek = (state, requested, reason) => {
+                const destination = clamp(Number(requested), 0, state.chart.durationBeats - 1);
+                const reasonSentence = reason.endsWith(".") ? reason : `${reason}.`;
+                if (destination === state.transport.position)
+                    return record(state, `${reasonSentence} Playhead is already at ${formatBeat(destination)}, so Practice state did not change.`);
+                const loop = activeLoop(state);
+                const outsideLoop = loop && (destination < loop.start || destination >= loop.end);
+                if (outsideLoop) {
+                    loop.enabled = false;
+                    state.activeLoopId = null;
+                }
+
+                state.transport.position = destination;
+                if (!isActive(state))
+                    return record(state, `${reasonSentence} Moved to ${formatBeat(destination)}${outsideLoop ? ` and disabled loop “${loop.name}”` : ""}.`);
+
+                if (outsideLoop) {
+                    return startAttempt(state, {
+                        start: destination,
+                        assisted: true,
+                        reason: `${reasonSentence} The destination disabled loop “${loop.name}”, changed the Practice Range, and began an assisted Practice Session at ${formatBeat(destination)}.`
+                    });
+                }
+
+                state.session.assisted = true;
+                if (state.transport.phase === "Paused") {
+                    state.transport.resumeNeedsCountIn = true;
+                    return record(state, `${reasonSentence} The paused, assisted session moved to ${formatBeat(destination)}. Resume will count in.`);
+                }
+                return enterPractice(state, state.guidance.countInBeats, `${reasonSentence} The assisted session moved to ${formatBeat(destination)}; Chart time stays frozen through count-in.`);
+            };
+            const selectRelativeBookmark = (state, direction) => {
+                if (state.bookmarks.length === 0)
+                    return record(state, "No bookmarks exist yet.");
+                const sorted = [...state.bookmarks].sort((a, b) => a.position - b.position);
+                const bookmark = direction > 0
+                    ? sorted.find(item => item.position > state.transport.position) || sorted[0]
+                    : [...sorted].reverse().find(item => item.position < state.transport.position) || sorted[sorted.length - 1];
+                state.selectedBookmarkId = bookmark.id;
+                return seek(state, bookmark.position, `${direction > 0 ? "Next" : "Previous"} bookmark “${bookmark.name}”.`);
+            };
+
+            function createInitialState() {
+                return {
+                    chart: { title: "Practice Chart", durationBeats: 32, beatsPerBar: 4, baseTempoBpm: 120 },
+                    setup: { mode: MODES.WAIT, requiredHands: "Both", tempoPercent: 100, metronome: true },
+                    guidance: { countInBeats: 4, countInOnLoopRepeat: false },
+                    transport: {
+                        phase: "Stopped",
+                        position: 0,
+                        countInRemaining: 0,
+                        resumeNeedsCountIn: false,
+                        lastCue: "No timing cue"
+                    },
+                    session: {
+                        number: 0,
+                        status: "Not started",
+                        lastEnded: "—",
+                        rangeStart: 0,
+                        rangeEnd: 32,
+                        assisted: false,
+                        errors: 0,
+                        loopPass: 1,
+                        setup: "Not started"
+                    },
+                    loopDraft: { start: null, end: null },
+                    loops: [],
+                    selectedLoopId: null,
+                    activeLoopId: null,
+                    nextLoopId: 1,
+                    bookmarks: [],
+                    selectedBookmarkId: null,
+                    nextBookmarkId: 1,
+                    lastChange: "Prototype ready. Choose a walkthrough or use any control.",
+                    historySequence: 1,
+                    history: []
+                };
+            }
+
+            function reduce(previous, action) {
+                if (action.type === "RESET")
+                    return record(createInitialState(), "Prototype reset to its known starting state.");
+
+                const state = clone(previous);
+                switch (action.type) {
+                    case "SET_MODE":
+                        state.setup.mode = action.value;
+                        return restartForComparableChange(state, `Practice Mode changed to ${action.value}.`);
+                    case "SET_HANDS":
+                        state.setup.requiredHands = action.value;
+                        return restartForComparableChange(state, `Required Hands changed to ${action.value}.`);
+                    case "SET_TEMPO":
+                        state.setup.tempoPercent = Number(action.value);
+                        return restartForComparableChange(state, `Tempo changed to ${action.value}%.`);
+                    case "SET_METRONOME":
+                        state.setup.metronome = Boolean(action.value);
+                        state.transport.lastCue = state.setup.metronome ? `Metronome ready · ${cadence(state)}` : "Metronome silent";
+                        return record(state, `During-practice metronome turned ${state.setup.metronome ? "on" : "off"}; the current Practice Session continues.`);
+                    case "SET_COUNT_IN":
+                        state.guidance.countInBeats = Number(action.value);
+                        return record(state, `Future count-ins changed to ${action.value === 0 ? "Off" : `${action.value} beats`}; the current Practice Session continues.`);
+                    case "SET_LOOP_COUNT_IN":
+                        state.guidance.countInOnLoopRepeat = Boolean(action.value);
+                        return record(state, `Count-in on each loop repeat turned ${action.value ? "on" : "off"}; the current pass continues.`);
+                    case "START":
+                        return startAttempt(state, { reason: `Practice Session ${state.session.number + 1} started at the Practice Range start.` });
+                    case "STOP":
+                        if (!isActive(state))
+                            return record(state, "Stop had no effect because there is no Practice Session in progress.");
+                        closeSession(state, "Abandoned", "Learner stopped Practice");
+                        state.transport.phase = "Stopped";
+                        state.transport.countInRemaining = 0;
+                        state.transport.resumeNeedsCountIn = false;
+                        state.transport.lastCue = "No timing cue";
+                        return record(state, `Practice Session ${state.session.number} was abandoned. Saved loops and bookmarks remain available.`);
+                    case "PAUSE":
+                        if (!isActive(state) || state.transport.phase === "Paused")
+                            return record(state, "Pause had no effect because Practice is not currently advancing.");
+                        state.transport.phase = "Paused";
+                        state.transport.countInRemaining = 0;
+                        state.transport.lastCue = "Paused";
+                        return record(state, `Practice Session ${state.session.number} paused at ${formatBeat(state.transport.position)}.`);
+                    case "RESUME":
+                        if (state.transport.phase !== "Paused")
+                            return record(state, "Resume had no effect because Practice is not paused.");
+                        if (state.transport.resumeNeedsCountIn)
+                            return enterPractice(state, state.guidance.countInBeats, "A discontinuous seek occurred while paused, so Resume begins with count-in.");
+                        state.transport.phase = practicePhase(state.setup.mode);
+                        state.transport.lastCue = state.setup.metronome ? `Metronome ready · ${cadence(state)}` : "No timing cue";
+                        return record(state, `Practice Session ${state.session.number} resumed without count-in because the playhead did not jump.`);
+                    case "TICK":
+                        if (state.transport.phase === "Count-in") {
+                            state.transport.countInRemaining -= 1;
+                            state.transport.lastCue = `Count-in click · ${cadence(state)}`;
+                            if (state.transport.countInRemaining <= 0) {
+                                state.transport.countInRemaining = 0;
+                                state.transport.phase = practicePhase(state.setup.mode);
+                                return record(state, `Count-in finished at ${formatBeat(state.transport.position)}; Chart time can now ${state.setup.mode === MODES.WAIT ? "wait for the required notes" : "advance"}.`);
+                            }
+                            return record(state, `Count-in clicked; ${state.transport.countInRemaining} beat${state.transport.countInRemaining === 1 ? "" : "s"} remain while Chart time stays frozen.`);
+                        }
+                        if (state.transport.phase === "Waiting for Notes") {
+                            state.transport.lastCue = state.setup.metronome ? `Metronome click · ${cadence(state)} · Chart time waiting` : "Chart time waiting";
+                            return record(state, "Wait for Notes did not advance because the Practice Target is not yet satisfied.");
+                        }
+                        if (state.transport.phase !== "Running")
+                            return record(state, "Advance had no effect because Practice is not running.");
+                        return moveForward(state);
+                    case "SUPPLY_REQUIRED":
+                        if (state.transport.phase === "Waiting for Notes")
+                            return moveForward(state);
+                        if (state.transport.phase === "Running")
+                            return record(state, `${state.setup.mode} observed the Learner attack without controlling Chart time.`);
+                        return record(state, "Learner input was ignored because Practice is not accepting performance input.");
+                    case "ERROR":
+                        if (!isActive(state) || ["Count-in", "Paused"].includes(state.transport.phase))
+                            return record(state, "The error was not recorded because performance input is not active.");
+                        state.session.errors += 1;
+                        if (state.setup.mode === MODES.WAIT)
+                            return record(state, "Extra note recorded; Wait for Notes stays on the same Practice Target and does not restart automatically.");
+                        if (state.setup.mode === MODES.RECITAL)
+                            return record(state, "Recital recorded the error silently for deferred feedback; Chart time continues.");
+                        return record(state, "Play in Time recorded the error with live feedback; Chart time continues.");
+                    case "RESTART_AFTER_ERROR":
+                        if (!isActive(state) || state.session.errors === 0)
+                            return record(state, "Restart after error had no effect because there is no in-progress Practice Session with a recorded error.");
+                        return startAttempt(state, { reason: `Restart began Practice Session ${state.session.number + 1} at the Practice Range start as a fresh attempt.` });
+                    case "SEEK":
+                        return seek(state, action.position, "Direct seek.");
+                    case "MARK_LOOP_START":
+                        state.loopDraft.start = state.transport.position;
+                        return record(state, `Loop start marked at ${formatBeat(state.transport.position)}.`);
+                    case "MARK_LOOP_END":
+                        state.loopDraft.end = state.transport.position;
+                        return record(state, `Loop end marked at ${formatBeat(state.transport.position)}.`);
+                    case "MARK_LOOP_END_AFTER":
+                        state.loopDraft.end = Math.min(state.transport.position + 1, state.chart.durationBeats);
+                        return record(state, `Loop end marked after ${formatBeat(state.transport.position)}${state.transport.position === state.chart.durationBeats - 1 ? " at the Chart boundary" : ""}.`);
+                    case "CLEAR_LOOP_DRAFT":
+                        state.loopDraft = { start: null, end: null };
+                        return record(state, "Unsaved loop marks cleared.");
+                    case "SAVE_LOOP": {
+                        const { start, end } = state.loopDraft;
+                        if (start === null || end === null || start >= end)
+                            return record(state, "Loop was not saved: mark a start before an end.");
+                        const loop = {
+                            id: `L${state.nextLoopId++}`,
+                            name: String(action.name || "Loop").trim() || "Loop",
+                            start,
+                            end,
+                            enabled: false
+                        };
+                        state.loops.push(loop);
+                        state.selectedLoopId = loop.id;
+                        state.loopDraft = { start: null, end: null };
+                        return record(state, `Saved loop “${loop.name}” (${formatBeat(start)}–${formatBeat(end)}). It is selected but not enabled.`);
+                    }
+                    case "SELECT_LOOP":
+                        state.selectedLoopId = action.id || null;
+                        return record(state, action.id ? "Selected a saved loop for editing or activation." : "No loop selected.");
+                    case "TOGGLE_LOOP": {
+                        const selected = state.loops.find(loop => loop.id === state.selectedLoopId);
+                        if (!selected)
+                            return record(state, "No saved loop is selected.");
+                        const enabling = !selected.enabled;
+                        state.loops.forEach(loop => loop.enabled = false);
+                        selected.enabled = enabling;
+                        state.activeLoopId = enabling ? selected.id : null;
+                        if (!isActive(state)) {
+                            state.transport.position = enabling ? selected.start : state.transport.position;
+                            return record(state, `Loop “${selected.name}” ${enabling ? "enabled as the next Practice Range" : "disabled"}.`);
+                        }
+                        return startAttempt(state, {
+                            reason: `Loop “${selected.name}” ${enabling ? "enabled" : "disabled"}; the Practice Range changed, so a new Practice Session began.`
+                        });
+                    }
+                    case "GO_LOOP_START": {
+                        const selected = state.loops.find(loop => loop.id === state.selectedLoopId);
+                        return selected
+                            ? seek(state, selected.start, `Loop “${selected.name}” start.`)
+                            : record(state, "No saved loop is selected.");
+                    }
+                    case "RENAME_LOOP": {
+                        const selected = state.loops.find(loop => loop.id === state.selectedLoopId);
+                        if (!selected)
+                            return record(state, "No saved loop is selected.");
+                        const oldName = selected.name;
+                        selected.name = String(action.name || "Loop").trim() || "Loop";
+                        return record(state, `Renamed loop “${oldName}” to “${selected.name}”.`);
+                    }
+                    case "NUDGE_LOOP": {
+                        const selected = state.loops.find(loop => loop.id === state.selectedLoopId);
+                        if (!selected)
+                            return record(state, "No saved loop is selected.");
+                        const nextStart = action.boundary === "start" ? selected.start + action.delta : selected.start;
+                        const nextEnd = action.boundary === "end" ? selected.end + action.delta : selected.end;
+                        if (nextStart < 0 || nextEnd > state.chart.durationBeats || nextStart >= nextEnd)
+                            return record(state, "Loop edit rejected because the start must remain before the end inside the Chart.");
+                        selected.start = nextStart;
+                        selected.end = nextEnd;
+                        if (selected.enabled && isActive(state))
+                            return startAttempt(state, { reason: `Enabled loop “${selected.name}” changed to ${formatBeat(nextStart)}–${formatBeat(nextEnd)}; a new Practice Session began.` });
+                        return record(state, `Loop “${selected.name}” changed to ${formatBeat(nextStart)}–${formatBeat(nextEnd)}.`);
+                    }
+                    case "DELETE_LOOP": {
+                        const selected = state.loops.find(loop => loop.id === state.selectedLoopId);
+                        if (!selected)
+                            return record(state, "No saved loop is selected.");
+                        const changedRange = selected.enabled && isActive(state);
+                        state.loops = state.loops.filter(loop => loop.id !== selected.id);
+                        state.selectedLoopId = state.loops[0]?.id || null;
+                        if (state.activeLoopId === selected.id)
+                            state.activeLoopId = null;
+                        if (changedRange)
+                            return startAttempt(state, { start: state.transport.position, assisted: true, reason: `Deleted enabled loop “${selected.name}”; a new assisted full-Chart Practice Session began at the playhead.` });
+                        return record(state, `Deleted loop “${selected.name}”.`);
+                    }
+                    case "ADD_BOOKMARK": {
+                        const bookmark = {
+                            id: `B${state.nextBookmarkId++}`,
+                            name: String(action.name || "Bookmark").trim() || "Bookmark",
+                            position: state.transport.position
+                        };
+                        state.bookmarks.push(bookmark);
+                        state.selectedBookmarkId = bookmark.id;
+                        return record(state, `Added bookmark “${bookmark.name}” at ${formatBeat(bookmark.position)}.`);
+                    }
+                    case "SELECT_BOOKMARK":
+                        state.selectedBookmarkId = action.id || null;
+                        return record(state, action.id ? "Selected a bookmark." : "No bookmark selected.");
+                    case "GO_BOOKMARK": {
+                        const bookmark = state.bookmarks.find(item => item.id === state.selectedBookmarkId);
+                        return bookmark
+                            ? seek(state, bookmark.position, `Bookmark “${bookmark.name}”.`)
+                            : record(state, "No bookmark is selected.");
+                    }
+                    case "PREVIOUS_BOOKMARK":
+                        return selectRelativeBookmark(state, -1);
+                    case "NEXT_BOOKMARK":
+                        return selectRelativeBookmark(state, 1);
+                    case "RENAME_BOOKMARK": {
+                        const bookmark = state.bookmarks.find(item => item.id === state.selectedBookmarkId);
+                        if (!bookmark)
+                            return record(state, "No bookmark is selected.");
+                        const oldName = bookmark.name;
+                        bookmark.name = String(action.name || "Bookmark").trim() || "Bookmark";
+                        return record(state, `Renamed bookmark “${oldName}” to “${bookmark.name}”.`);
+                    }
+                    case "MOVE_BOOKMARK": {
+                        const bookmark = state.bookmarks.find(item => item.id === state.selectedBookmarkId);
+                        if (!bookmark)
+                            return record(state, "No bookmark is selected.");
+                        if (bookmark.position === state.transport.position)
+                            return record(state, `Bookmark “${bookmark.name}” is already at the playhead.`);
+                        const oldPosition = bookmark.position;
+                        bookmark.position = state.transport.position;
+                        return record(state, `Moved bookmark “${bookmark.name}” from ${formatBeat(oldPosition)} to ${formatBeat(bookmark.position)}.`);
+                    }
+                    case "DELETE_BOOKMARK": {
+                        const bookmark = state.bookmarks.find(item => item.id === state.selectedBookmarkId);
+                        if (!bookmark)
+                            return record(state, "No bookmark is selected.");
+                        state.bookmarks = state.bookmarks.filter(item => item.id !== bookmark.id);
+                        state.selectedBookmarkId = state.bookmarks[0]?.id || null;
+                        return record(state, `Deleted bookmark “${bookmark.name}”.`);
+                    }
+                    default:
+                        return record(state, `Unknown action “${action.type}” had no effect.`);
+                }
+            }
+
+            function formatBeat(beat) {
+                const safeBeat = Math.max(0, Number(beat));
+                const bar = Math.floor(safeBeat / 4) + 1;
+                const withinBar = safeBeat % 4 + 1;
+                return `bar ${bar}, beat ${withinBar}`;
+            }
+
+            return Object.freeze({
+                createInitialState,
+                reduce,
+                formatBeat,
+                practiceRange,
+                activeLoop,
+                tempoBpm,
+                beatDurationMs,
+                practiceProgressEligibility,
+                MODES
+            });
+        })();
+
+        const scenarios = [
+            {
+                title: "Create a loop and feel the repeat boundary",
+                description: "A two-beat loop becomes the Practice Range. Reaching its end completes one attempt and begins another without count-in by default.",
+                steps: [
+                    ["Use Play in Time", { type: "SET_MODE", value: "Play in Time" }],
+                    ["Turn count-in off", { type: "SET_COUNT_IN", value: 0 }],
+                    ["Seek to bar 3", { type: "SEEK", position: 8 }],
+                    ["Mark loop start", { type: "MARK_LOOP_START" }],
+                    ["Seek ahead two beats", { type: "SEEK", position: 10 }],
+                    ["Mark loop end", { type: "MARK_LOOP_END" }],
+                    ["Save “Tricky phrase”", { type: "SAVE_LOOP", name: "Tricky phrase" }],
+                    ["Enable the loop", { type: "TOGGLE_LOOP" }],
+                    ["Start Practice", { type: "START" }],
+                    ["Advance inside loop", { type: "TICK" }],
+                    ["Cross loop end", { type: "TICK" }]
+                ]
+            },
+            {
+                title: "Wait for Notes, error, and explicit restart",
+                description: "Count-in freezes Chart time. A wrong note leaves the current Practice Target in place. Restart creates a fresh Practice Session at the loop start.",
+                steps: [
+                    ["Use a 2-beat count-in", { type: "SET_COUNT_IN", value: 2 }],
+                    ["Seek to bar 2", { type: "SEEK", position: 4 }],
+                    ["Mark loop start", { type: "MARK_LOOP_START" }],
+                    ["Seek to bar 3", { type: "SEEK", position: 8 }],
+                    ["Mark loop end", { type: "MARK_LOOP_END" }],
+                    ["Save the loop", { type: "SAVE_LOOP", name: "Hands together" }],
+                    ["Enable the loop", { type: "TOGGLE_LOOP" }],
+                    ["Start Practice", { type: "START" }],
+                    ["Count-in click 1", { type: "TICK" }],
+                    ["Count-in click 2", { type: "TICK" }],
+                    ["Make an error", { type: "ERROR" }],
+                    ["Try advancing time", { type: "TICK" }],
+                    ["Restart after error", { type: "RESTART_AFTER_ERROR" }]
+                ]
+            },
+            {
+                title: "Navigate outside an enabled loop",
+                description: "A bookmark outside the active Practice Range is honored. The loop turns off, range comparability changes, and the new attempt is visibly assisted.",
+                steps: [
+                    ["Turn count-in off", { type: "SET_COUNT_IN", value: 0 }],
+                    ["Seek to bar 2", { type: "SEEK", position: 4 }],
+                    ["Add Verse bookmark", { type: "ADD_BOOKMARK", name: "Verse" }],
+                    ["Mark loop start", { type: "MARK_LOOP_START" }],
+                    ["Seek to bar 4", { type: "SEEK", position: 12 }],
+                    ["Mark loop end", { type: "MARK_LOOP_END" }],
+                    ["Save Verse loop", { type: "SAVE_LOOP", name: "Verse loop" }],
+                    ["Enable Verse loop", { type: "TOGGLE_LOOP" }],
+                    ["Seek to bar 6", { type: "SEEK", position: 20 }],
+                    ["Add Coda bookmark", { type: "ADD_BOOKMARK", name: "Coda" }],
+                    ["Enable Verse loop again", { type: "SELECT_LOOP", id: "L1" }],
+                    ["Toggle it on", { type: "TOGGLE_LOOP" }],
+                    ["Start Practice", { type: "START" }],
+                    ["Select Coda", { type: "SELECT_BOOKMARK", id: "B2" }],
+                    ["Go to Coda", { type: "GO_BOOKMARK" }]
+                ]
+            },
+            {
+                title: "Change comparable setup versus live guidance",
+                description: "Tempo and Required Hands restart the attempt. Metronome and future count-in settings take effect without invalidating the Practice Session already in progress.",
+                steps: [
+                    ["Use Play in Time", { type: "SET_MODE", value: "Play in Time" }],
+                    ["Turn count-in off", { type: "SET_COUNT_IN", value: 0 }],
+                    ["Start Practice", { type: "START" }],
+                    ["Set tempo to 75%", { type: "SET_TEMPO", value: 75 }],
+                    ["Require Left hand", { type: "SET_HANDS", value: "Left" }],
+                    ["Turn metronome off", { type: "SET_METRONOME", value: false }],
+                    ["Set future count-in to 4", { type: "SET_COUNT_IN", value: 4 }],
+                    ["Advance one beat", { type: "TICK" }]
+                ]
+            },
+            {
+                title: "Recital defers error feedback",
+                description: "Recital records mistakes without live interruption. An explicit restart still begins a new Practice Session at the fixed Practice Range start.",
+                steps: [
+                    ["Use Recital", { type: "SET_MODE", value: "Recital" }],
+                    ["Turn count-in off", { type: "SET_COUNT_IN", value: 0 }],
+                    ["Start Practice", { type: "START" }],
+                    ["Make an error", { type: "ERROR" }],
+                    ["Advance one beat", { type: "TICK" }],
+                    ["Restart", { type: "RESTART_AFTER_ERROR" }]
+                ]
+            },
+            {
+                title: "Edit and navigate saved waypoints",
+                description: "Loops can be renamed and visited without being enabled. Bookmarks can be repositioned, and Previous/Next uses the playhead rather than a stale selection.",
+                steps: [
+                    ["Seek to bar 2", { type: "SEEK", position: 4 }],
+                    ["Mark loop start", { type: "MARK_LOOP_START" }],
+                    ["Seek to bar 3", { type: "SEEK", position: 8 }],
+                    ["Mark loop end", { type: "MARK_LOOP_END" }],
+                    ["Save Verse loop", { type: "SAVE_LOOP", name: "Verse loop" }],
+                    ["Rename to Verse pickup", { type: "RENAME_LOOP", name: "Verse pickup" }],
+                    ["Seek away", { type: "SEEK", position: 12 }],
+                    ["Go to saved loop start", { type: "GO_LOOP_START" }],
+                    ["Add Verse bookmark", { type: "ADD_BOOKMARK", name: "Verse" }],
+                    ["Seek to bar 5", { type: "SEEK", position: 16 }],
+                    ["Move Verse to playhead", { type: "MOVE_BOOKMARK" }],
+                    ["Seek to bar 7", { type: "SEEK", position: 24 }],
+                    ["Add Coda bookmark", { type: "ADD_BOOKMARK", name: "Coda" }],
+                    ["Seek behind both bookmarks", { type: "SEEK", position: 8 }],
+                    ["Go to next by playhead", { type: "NEXT_BOOKMARK" }],
+                    ["Go again (already there)", { type: "GO_BOOKMARK" }]
+                ]
+            },
+            {
+                title: "Repeat the Chart’s final beat",
+                description: "The end-after-playhead control places the loop end immediately after the final beat, so the Learner can repeat that beat by itself.",
+                steps: [
+                    ["Use Play in Time", { type: "SET_MODE", value: "Play in Time" }],
+                    ["Turn count-in off", { type: "SET_COUNT_IN", value: 0 }],
+                    ["Seek to final beat", { type: "SEEK", position: 31 }],
+                    ["Mark loop start", { type: "MARK_LOOP_START" }],
+                    ["End after final beat", { type: "MARK_LOOP_END_AFTER" }],
+                    ["Save Final beat", { type: "SAVE_LOOP", name: "Final beat" }],
+                    ["Enable the loop", { type: "TOGGLE_LOOP" }],
+                    ["Start Practice", { type: "START" }],
+                    ["Cross the Chart boundary", { type: "TICK" }]
+                ]
+            }
+        ];
+
+        let state = PracticeNavigationModel.createInitialState();
+        let activeScenario = 0;
+        let scenarioStep = 0;
+
+        const byId = id => document.getElementById(id);
+        const field = (label, value) => `<div class="field"><span>${label}</span><strong>${value}</strong></div>`;
+        const escapeHtml = value => String(value)
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#039;");
+
+        function dispatch(action, fromScenario = false) {
+            state = PracticeNavigationModel.reduce(state, action);
+            if (fromScenario)
+                scenarioStep += 1;
+            render();
+        }
+
+        function options(items, selectedId, emptyLabel) {
+            if (items.length === 0)
+                return `<option value="">${emptyLabel}</option>`;
+            return items.map(item => `<option value="${item.id}" ${item.id === selectedId ? "selected" : ""}>${escapeHtml(item.name)} · ${PracticeNavigationModel.formatBeat(item.position ?? item.start)}</option>`).join("");
+        }
+
+        function render() {
+            const range = PracticeNavigationModel.practiceRange(state);
+            const loop = PracticeNavigationModel.activeLoop(state);
+            byId("session-state").innerHTML = [
+                field("Phase", `<span class="phase-pill" data-phase="${state.transport.phase}">${state.transport.phase}</span>`),
+                field("Practice Session", state.session.number === 0 ? "Not started" : `#${state.session.number}`),
+                field("Session lifecycle", state.session.status),
+                field("Last ended session", escapeHtml(state.session.lastEnded)),
+                field("Chart position", PracticeNavigationModel.formatBeat(state.transport.position)),
+                field("Practice Range", `${PracticeNavigationModel.formatBeat(range.start)}–${PracticeNavigationModel.formatBeat(range.end)}`),
+                field("Loop pass", loop ? state.session.loopPass : "Not looping"),
+                field("Practice Progress eligibility", PracticeNavigationModel.practiceProgressEligibility(state)),
+                field("Errors", state.session.errors),
+                field("Timing cue", escapeHtml(state.transport.lastCue)),
+                field("Resume count-in", state.transport.resumeNeedsCountIn ? "Required after paused seek" : "No")
+            ].join("");
+
+            byId("setup-state").innerHTML = [
+                field("Practice Mode", state.setup.mode),
+                field("Required Hands", state.setup.requiredHands),
+                field("Chart tempo", `${PracticeNavigationModel.tempoBpm(state)} BPM (${state.setup.tempoPercent}%)`),
+                field("Click cadence", `${PracticeNavigationModel.beatDurationMs(state)} ms/beat`),
+                field("Metronome", state.setup.metronome ? "On during Practice" : "Off during Practice"),
+                field("Count-in", state.guidance.countInBeats === 0 ? "Off" : `${state.guidance.countInBeats} beats`),
+                field("Count-in remaining", state.transport.phase === "Count-in" ? state.transport.countInRemaining : "—"),
+                field("Each loop repeat", state.guidance.countInOnLoopRepeat ? "Count in" : "No count-in"),
+                field("Setup snapshot", escapeHtml(state.session.setup))
+            ].join("");
+
+            const draft = state.loopDraft.start !== null || state.loopDraft.end !== null
+                ? `<div class="mini-item">Unsaved marks · ${state.loopDraft.start === null ? "Start?" : PracticeNavigationModel.formatBeat(state.loopDraft.start)} → ${state.loopDraft.end === null ? "End?" : PracticeNavigationModel.formatBeat(state.loopDraft.end)}</div>`
+                : "";
+            const loopItems = state.loops.map(item => `<div class="mini-item ${item.enabled ? "active" : ""}"><strong>${escapeHtml(item.name)}</strong><br>${PracticeNavigationModel.formatBeat(item.start)}–${PracticeNavigationModel.formatBeat(item.end)} · ${item.enabled ? "Enabled Practice Range" : "Saved"}${item.id === state.selectedLoopId ? " · Selected" : ""}</div>`).join("");
+            byId("loop-state").innerHTML = draft + loopItems || `<span class="empty">No loops or marks yet.</span>`;
+
+            byId("bookmark-state").innerHTML = state.bookmarks.length
+                ? [...state.bookmarks].sort((a, b) => a.position - b.position).map(item => `<div class="mini-item ${item.id === state.selectedBookmarkId ? "active" : ""}"><strong>${escapeHtml(item.name)}</strong><br>${PracticeNavigationModel.formatBeat(item.position)}</div>`).join("")
+                : `<span class="empty">No bookmarks yet.</span>`;
+
+            byId("last-change").textContent = state.lastChange;
+            byId("mode").value = state.setup.mode;
+            byId("hands").value = state.setup.requiredHands;
+            byId("tempo").value = String(state.setup.tempoPercent);
+            byId("count-in").value = String(state.guidance.countInBeats);
+            byId("metronome").value = state.setup.metronome ? "on" : "off";
+            byId("loop-count-in").value = state.guidance.countInOnLoopRepeat ? "on" : "off";
+            byId("seek-position").value = state.transport.position;
+            byId("loop-selection").innerHTML = options(state.loops, state.selectedLoopId, "No saved loops");
+            byId("bookmark-selection").innerHTML = options(state.bookmarks, state.selectedBookmarkId, "No bookmarks");
+
+            byId("history").innerHTML = state.history.length
+                ? state.history.map(item => `<div class="history-row"><span>${item.number}</span><div>${escapeHtml(item.message)}</div></div>`).join("")
+                : `<div class="history-row"><span>—</span><div class="empty">Actions will appear here.</div></div>`;
+
+            renderScenario();
+        }
+
+        function startScenario(index) {
+            activeScenario = index;
+            scenarioStep = 0;
+            state = PracticeNavigationModel.reduce(PracticeNavigationModel.createInitialState(), { type: "RESET" });
+            render();
+        }
+
+        function renderScenario() {
+            const scenario = scenarios[activeScenario];
+            byId("scenario-tabs").innerHTML = scenarios.map((item, index) => `<button class="tab ${index === activeScenario ? "active" : ""}" data-scenario="${index}">${index + 1}. ${escapeHtml(item.title)}</button>`).join("");
+            byId("scenario-title").textContent = scenario.title;
+            byId("scenario-description").textContent = scenario.description;
+            byId("scenario-steps").innerHTML = scenario.steps.map(([label], index) => `<button class="step ${index < scenarioStep ? "done" : ""} ${index === scenarioStep ? "next" : ""}" data-step="${index + 1}" data-scenario-step="${index}">${escapeHtml(label)}</button>`).join("");
+            document.querySelectorAll("[data-scenario]").forEach(button => button.addEventListener("click", () => startScenario(Number(button.dataset.scenario))));
+            document.querySelectorAll("[data-scenario-step]").forEach(button => button.addEventListener("click", () => {
+                const index = Number(button.dataset.scenarioStep);
+                if (index !== scenarioStep) {
+                    state = PracticeNavigationModel.reduce(state, { type: "UNKNOWN_STEP_ORDER" });
+                    state.lastChange = "Use the highlighted walkthrough step so the scenario remains reproducible.";
+                    render();
+                    return;
+                }
+                dispatch(scenario.steps[index][1], true);
+            }));
+        }
+
+        byId("mode").addEventListener("change", event => dispatch({ type: "SET_MODE", value: event.target.value }));
+        byId("hands").addEventListener("change", event => dispatch({ type: "SET_HANDS", value: event.target.value }));
+        byId("tempo").addEventListener("change", event => dispatch({ type: "SET_TEMPO", value: Number(event.target.value) }));
+        byId("count-in").addEventListener("change", event => dispatch({ type: "SET_COUNT_IN", value: Number(event.target.value) }));
+        byId("metronome").addEventListener("change", event => dispatch({ type: "SET_METRONOME", value: event.target.value === "on" }));
+        byId("loop-count-in").addEventListener("change", event => dispatch({ type: "SET_LOOP_COUNT_IN", value: event.target.value === "on" }));
+        byId("seek").addEventListener("click", () => dispatch({ type: "SEEK", position: Number(byId("seek-position").value) }));
+        byId("start").addEventListener("click", () => dispatch({ type: "START" }));
+        byId("stop").addEventListener("click", () => dispatch({ type: "STOP" }));
+        byId("pause").addEventListener("click", () => dispatch({ type: "PAUSE" }));
+        byId("resume").addEventListener("click", () => dispatch({ type: "RESUME" }));
+        byId("tick").addEventListener("click", () => dispatch({ type: "TICK" }));
+        byId("correct").addEventListener("click", () => dispatch({ type: "SUPPLY_REQUIRED" }));
+        byId("error").addEventListener("click", () => dispatch({ type: "ERROR" }));
+        byId("restart").addEventListener("click", () => dispatch({ type: "RESTART_AFTER_ERROR" }));
+        byId("reset").addEventListener("click", () => dispatch({ type: "RESET" }));
+        byId("mark-loop-start").addEventListener("click", () => dispatch({ type: "MARK_LOOP_START" }));
+        byId("mark-loop-end").addEventListener("click", () => dispatch({ type: "MARK_LOOP_END" }));
+        byId("mark-loop-end-after").addEventListener("click", () => dispatch({ type: "MARK_LOOP_END_AFTER" }));
+        byId("clear-loop-draft").addEventListener("click", () => dispatch({ type: "CLEAR_LOOP_DRAFT" }));
+        byId("save-loop").addEventListener("click", () => dispatch({ type: "SAVE_LOOP", name: byId("loop-name").value }));
+        byId("loop-selection").addEventListener("change", event => dispatch({ type: "SELECT_LOOP", id: event.target.value }));
+        byId("toggle-loop").addEventListener("click", () => dispatch({ type: "TOGGLE_LOOP" }));
+        byId("go-loop-start").addEventListener("click", () => dispatch({ type: "GO_LOOP_START" }));
+        byId("rename-loop").addEventListener("click", () => dispatch({ type: "RENAME_LOOP", name: byId("loop-name").value }));
+        byId("loop-start-back").addEventListener("click", () => dispatch({ type: "NUDGE_LOOP", boundary: "start", delta: -1 }));
+        byId("loop-start-forward").addEventListener("click", () => dispatch({ type: "NUDGE_LOOP", boundary: "start", delta: 1 }));
+        byId("loop-end-back").addEventListener("click", () => dispatch({ type: "NUDGE_LOOP", boundary: "end", delta: -1 }));
+        byId("loop-end-forward").addEventListener("click", () => dispatch({ type: "NUDGE_LOOP", boundary: "end", delta: 1 }));
+        byId("delete-loop").addEventListener("click", () => dispatch({ type: "DELETE_LOOP" }));
+        byId("add-bookmark").addEventListener("click", () => dispatch({ type: "ADD_BOOKMARK", name: byId("bookmark-name").value }));
+        byId("bookmark-selection").addEventListener("change", event => dispatch({ type: "SELECT_BOOKMARK", id: event.target.value }));
+        byId("go-bookmark").addEventListener("click", () => dispatch({ type: "GO_BOOKMARK" }));
+        byId("previous-bookmark").addEventListener("click", () => dispatch({ type: "PREVIOUS_BOOKMARK" }));
+        byId("next-bookmark").addEventListener("click", () => dispatch({ type: "NEXT_BOOKMARK" }));
+        byId("rename-bookmark").addEventListener("click", () => dispatch({ type: "RENAME_BOOKMARK", name: byId("bookmark-name").value }));
+        byId("move-bookmark").addEventListener("click", () => dispatch({ type: "MOVE_BOOKMARK" }));
+        byId("delete-bookmark").addEventListener("click", () => dispatch({ type: "DELETE_BOOKMARK" }));
+
+        render();
+    </script>
+</body>
+</html>
