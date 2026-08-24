@@ -111,6 +111,9 @@ public sealed class PracticeAssessment
     private bool _waitForNotesTargetDue;
     private ChartTime? _waitForNotesTargetOnset;
 
+    public bool HasRecordedError => _noteDetails.Any(detail =>
+        detail.Judgment != TimingJudgment.Fantastic);
+
     private PracticeAssessment(
         PracticeChart chart,
         PracticeSessionPlan plan,

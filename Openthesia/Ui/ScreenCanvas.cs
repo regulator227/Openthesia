@@ -41,6 +41,14 @@ public class ScreenCanvas
     private static bool _isProgressBarHovered;
     private static float _panVelocity;
     private static bool _isProgressBarActive;
+    private static bool _showPracticeTools;
+    private static string _practiceLoopName = "Loop";
+    private static string _practiceBookmarkName = "Bookmark";
+    private static Guid? _editingLoopId;
+    private static Guid? _editingBookmarkId;
+    private static ChartTime? _loopStart;
+    private static ChartTime? _loopEnd;
+    private static string? _practiceToolsWarning;
 
     private static void RenderGrid()
     {
@@ -722,6 +730,9 @@ public class ScreenCanvas
             }
 
             DrawSharedControls(showTopBar, playMode);
+
+            if (IsPracticeMode && _showPracticeTools)
+                DrawPracticeTools();
         }
     }
 
@@ -739,12 +750,17 @@ public class ScreenCanvas
         };
         var status = snapshot.State switch
         {
+            PracticeSessionState.CountingIn => $"{mode} · Count-in · {snapshot.CountInBeatsRemaining}",
             PracticeSessionState.Running => $"{mode} · Playing",
             PracticeSessionState.WaitingForInput => $"{mode} · Play the highlighted target",
+            PracticeSessionState.LearnerPaused when snapshot.ResumeCountInPending =>
+                $"{mode} · Paused · Count-in on resume",
             PracticeSessionState.LearnerPaused => $"{mode} · Paused",
             PracticeSessionState.Completed => $"{mode} · Completed",
             _ => $"{mode} · {snapshot.State}"
         };
+        if (MidiPracticeSession.ActiveLoop is { } activeLoop)
+            status += $" · Loop: {activeLoop.Name}";
         ImGui.SetCursorScreenPos(new Vector2(
             (ImGui.GetIO().DisplaySize.X - ImGui.CalcTextSize(status).X) / 2,
             CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(18)).Y));
@@ -784,6 +800,385 @@ public class ScreenCanvas
                 CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(90)).Y));
             ImGui.Text(warning);
         }
+
+        if (MidiPracticeSession.NavigationWarning is { } navigationWarning)
+        {
+            ImGui.SetCursorScreenPos(new Vector2(
+                (ImGui.GetIO().DisplaySize.X - ImGui.CalcTextSize(navigationWarning).X) / 2,
+                CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(114)).Y));
+            ImGui.Text(navigationWarning);
+        }
+    }
+
+    private static void DrawPracticeTools()
+    {
+        ImGui.SetNextWindowSize(
+            ImGuiUtils.FixedSize(new Vector2(580, 720)),
+            ImGuiCond.FirstUseEver);
+        if (!ImGui.Begin(
+                "Practice tools",
+                ref _showPracticeTools,
+                ImGuiWindowFlags.NoCollapse))
+        {
+            ImGui.End();
+            return;
+        }
+
+        DrawActivePracticeSetupControls();
+        ImGui.Separator();
+        DrawPracticeTimingControls();
+        ImGui.Separator();
+        DrawPracticeLoopControls();
+        ImGui.Separator();
+        DrawPracticeBookmarkControls();
+
+        var warning = _practiceToolsWarning ?? MidiPracticeSession.NavigationWarning;
+        if (warning is not null)
+        {
+            ImGui.Separator();
+            ImGui.TextWrapped(warning);
+        }
+        ImGui.End();
+    }
+
+    private static void DrawActivePracticeSetupControls()
+    {
+        ImGui.Text("Practice setup");
+        if (MidiPracticeSession.Preferences is not { } preferences)
+            return;
+
+        ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(230)).X);
+        if (ImGui.BeginCombo(
+                "Mode##ActivePracticeMode",
+                PracticeModeLabel(preferences.Mode)))
+        {
+            foreach (var mode in Enum.GetValues<PracticeMode>())
+            {
+                if (ImGui.Selectable(PracticeModeLabel(mode), mode == preferences.Mode))
+                {
+                    _practiceToolsWarning = MidiPracticeSession.UpdatePreferences(
+                        preferences with { Mode = mode });
+                }
+            }
+            ImGui.EndCombo();
+        }
+
+        preferences = MidiPracticeSession.Preferences ?? preferences;
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(230)).X);
+        if (ImGui.BeginCombo(
+                "Required Hands##ActivePracticeHands",
+                preferences.RequiredHands.ToString()))
+        {
+            foreach (var hands in Enum.GetValues<RequiredHands>())
+            {
+                if (ImGui.Selectable(hands.ToString(), hands == preferences.RequiredHands))
+                {
+                    _practiceToolsWarning = MidiPracticeSession.UpdatePreferences(
+                        preferences.WithRequiredHands(hands));
+                }
+            }
+            ImGui.EndCombo();
+        }
+
+        preferences = MidiPracticeSession.Preferences ?? preferences;
+        ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(230)).X);
+        if (ImGui.BeginCombo(
+                "Tempo##ActivePracticeTempo",
+                $"{preferences.TempoRatio:0.##}x"))
+        {
+            foreach (var tempoRatio in new[] { 0.25m, 0.5m, 0.75m, 1m, 1.25m, 1.5m, 2m })
+            {
+                if (ImGui.Selectable(
+                        $"{tempoRatio:0.##}x",
+                        tempoRatio == preferences.TempoRatio))
+                {
+                    _practiceToolsWarning = MidiPracticeSession.UpdatePreferences(
+                        preferences with { TempoRatio = tempoRatio });
+                }
+            }
+            ImGui.EndCombo();
+        }
+
+        preferences = MidiPracticeSession.Preferences ?? preferences;
+        ImGui.SameLine();
+        ImGui.BeginDisabled(preferences.RequiredHands == RequiredHands.Both);
+        ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(230)).X);
+        if (ImGui.BeginCombo(
+                "Accompaniment##ActivePracticeAccompaniment",
+                preferences.Accompaniment.ToString()))
+        {
+            foreach (var accompaniment in Enum.GetValues<Accompaniment>())
+            {
+                if (ImGui.Selectable(
+                        accompaniment.ToString(),
+                        accompaniment == preferences.Accompaniment))
+                {
+                    _practiceToolsWarning = MidiPracticeSession.UpdatePreferences(
+                        preferences with { Accompaniment = accompaniment });
+                }
+            }
+            ImGui.EndCombo();
+        }
+        ImGui.EndDisabled();
+        ImGui.TextWrapped("Changing setup or range starts a fresh comparable Practice Session.");
+    }
+
+    private static void DrawPracticeTimingControls()
+    {
+        ImGui.Text("Timing");
+        if (MidiPracticeSession.Preferences is not { } preferences)
+            return;
+
+        ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(180)).X);
+        if (ImGui.BeginCombo(
+                "Count-in##ActivePracticeCountIn",
+                preferences.CountInBeats == 0
+                    ? "Off"
+                    : $"{preferences.CountInBeats} beats"))
+        {
+            foreach (var beats in PracticePreferences.SupportedCountInBeats)
+            {
+                var label = beats == 0 ? "Off" : $"{beats} beats";
+                if (ImGui.Selectable(label, beats == preferences.CountInBeats))
+                {
+                    _practiceToolsWarning = MidiPracticeSession.UpdatePreferences(
+                        preferences with { CountInBeats = beats });
+                }
+            }
+            ImGui.EndCombo();
+        }
+
+        preferences = MidiPracticeSession.Preferences ?? preferences;
+        var metronomeEnabled = preferences.MetronomeEnabled;
+        if (ImGui.Checkbox("Metronome", ref metronomeEnabled))
+        {
+            _practiceToolsWarning = MidiPracticeSession.UpdatePreferences(
+                preferences with { MetronomeEnabled = metronomeEnabled });
+        }
+
+        preferences = MidiPracticeSession.Preferences ?? preferences;
+        var countInOnLoopRepeat = preferences.CountInOnLoopRepeat;
+        if (ImGui.Checkbox("Count in on every loop pass", ref countInOnLoopRepeat))
+        {
+            _practiceToolsWarning = MidiPracticeSession.UpdatePreferences(
+                preferences with { CountInOnLoopRepeat = countInOnLoopRepeat });
+        }
+        ImGui.TextWrapped(
+            "Count-in clicks always sound. The metronome setting controls only the clicks while the Chart is playing.");
+        ImGui.BeginDisabled(!MidiPracticeSession.CanRestartAfterError);
+        if (ImGui.Button("Restart after error"))
+            _practiceToolsWarning = MidiPracticeSession.RestartAfterError();
+        ImGui.EndDisabled();
+    }
+
+    private static void DrawPracticeLoopControls()
+    {
+        ImGui.Text("Loops");
+        var navigation = MidiPracticeSession.Navigation;
+        var selectedLoop = _editingLoopId is { } selectedId
+            ? navigation.Loops.FirstOrDefault(loop => loop.Id == selectedId)
+            : null;
+
+        ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(280)).X);
+        if (ImGui.BeginCombo(
+                "Saved loop##PracticeLoop",
+                selectedLoop?.Name ?? "New loop"))
+        {
+            if (ImGui.Selectable("New loop", _editingLoopId is null))
+                BeginNewLoopDraft();
+            foreach (var loop in navigation.Loops.OrderBy(loop => loop.Range.Start))
+            {
+                if (ImGui.Selectable(loop.Name, loop.Id == _editingLoopId))
+                    EditLoop(loop);
+            }
+            ImGui.EndCombo();
+        }
+
+        ImGui.InputText("Name##PracticeLoopName", ref _practiceLoopName, 80);
+        if (ImGui.Button("Mark start at playhead"))
+        {
+            if (MidiPracticeSession.Snapshot is { } snapshot)
+                _loopStart = MidiPracticeSession.SnapToNearestBeat(snapshot.Position);
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("End after playhead"))
+        {
+            if (MidiPracticeSession.Snapshot is { } snapshot)
+                _loopEnd = MidiPracticeSession.SnapToNextBeatBoundary(snapshot.Position);
+        }
+
+        ImGui.Text(
+            $"Range: {FormatChartTime(_loopStart)} – {FormatChartTime(_loopEnd)}");
+        var validRange = _loopStart is { } start &&
+                         _loopEnd is { } end &&
+                         end.CompareTo(start) > 0;
+        ImGui.BeginDisabled(!validRange);
+        if (ImGui.Button(_editingLoopId is null ? "Save loop" : "Save changes"))
+        {
+            var id = _editingLoopId ?? Guid.NewGuid();
+            _practiceToolsWarning = MidiPracticeSession.SaveLoop(
+                id,
+                _practiceLoopName,
+                new PracticeRange(_loopStart!.Value, _loopEnd!.Value));
+            if (_practiceToolsWarning is null)
+                _editingLoopId = id;
+        }
+        ImGui.EndDisabled();
+
+        if (selectedLoop is not null)
+        {
+            ImGui.SameLine();
+            var isActive = MidiPracticeSession.ActiveLoop?.Id == selectedLoop.Id;
+            if (ImGui.Button(isActive ? "Disable loop" : "Enable loop"))
+            {
+                _practiceToolsWarning = MidiPracticeSession.SetActiveLoop(
+                    isActive ? null : selectedLoop.Id);
+            }
+            ImGui.SameLine();
+            if (ImGui.Button("Go to start"))
+                MidiPracticeSession.GoToLoopStart(selectedLoop.Id);
+            ImGui.SameLine();
+            if (ImGui.Button("Delete loop"))
+            {
+                _practiceToolsWarning = MidiPracticeSession.DeleteLoop(selectedLoop.Id);
+                if (_practiceToolsWarning is null)
+                    BeginNewLoopDraft();
+            }
+        }
+
+        if (!validRange && (_loopStart is not null || _loopEnd is not null))
+            ImGui.TextWrapped("A loop end must be after its start. The end uses the next Chart beat boundary.");
+        ImGui.TextWrapped("Enabling or editing a loop starts a new comparable Practice Session for that fixed range.");
+    }
+
+    private static void DrawPracticeBookmarkControls()
+    {
+        ImGui.Text("Bookmarks");
+        var navigation = MidiPracticeSession.Navigation;
+        var selectedBookmark = _editingBookmarkId is { } selectedId
+            ? navigation.Bookmarks.FirstOrDefault(bookmark => bookmark.Id == selectedId)
+            : null;
+
+        ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(280)).X);
+        if (ImGui.BeginCombo(
+                "Saved bookmark##PracticeBookmark",
+                selectedBookmark?.Name ?? "New bookmark"))
+        {
+            if (ImGui.Selectable("New bookmark", _editingBookmarkId is null))
+            {
+                _editingBookmarkId = null;
+                _practiceBookmarkName = "Bookmark";
+            }
+            foreach (var bookmark in navigation.Bookmarks.OrderBy(bookmark => bookmark.Position))
+            {
+                if (ImGui.Selectable(bookmark.Name, bookmark.Id == _editingBookmarkId))
+                {
+                    _editingBookmarkId = bookmark.Id;
+                    _practiceBookmarkName = bookmark.Name;
+                }
+            }
+            ImGui.EndCombo();
+        }
+
+        ImGui.InputText("Name##PracticeBookmarkName", ref _practiceBookmarkName, 80);
+        if (selectedBookmark is null && ImGui.Button("Save at playhead"))
+        {
+            if (MidiPracticeSession.Snapshot is { } snapshot)
+            {
+                var id = Guid.NewGuid();
+                _practiceToolsWarning = MidiPracticeSession.SaveBookmark(
+                    id,
+                    _practiceBookmarkName,
+                    snapshot.Position);
+                if (_practiceToolsWarning is null)
+                    _editingBookmarkId = id;
+            }
+        }
+
+        if (selectedBookmark is not null)
+        {
+            if (ImGui.Button("Rename bookmark"))
+            {
+                _practiceToolsWarning = MidiPracticeSession.SaveBookmark(
+                    selectedBookmark.Id,
+                    _practiceBookmarkName,
+                    selectedBookmark.Position);
+            }
+            ImGui.SameLine();
+            if (ImGui.Button("Move to playhead"))
+            {
+                if (MidiPracticeSession.Snapshot is { } snapshot)
+                {
+                    _practiceToolsWarning = MidiPracticeSession.SaveBookmark(
+                        selectedBookmark.Id,
+                        _practiceBookmarkName,
+                        snapshot.Position);
+                }
+            }
+        }
+
+        ImGui.BeginDisabled(navigation.Bookmarks.Count == 0);
+        if (ImGui.Button("Previous bookmark"))
+            MidiPracticeSession.GoToBookmark(PracticeNavigationDirection.Previous);
+        ImGui.SameLine();
+        if (ImGui.Button("Next bookmark"))
+            MidiPracticeSession.GoToBookmark(PracticeNavigationDirection.Next);
+        ImGui.EndDisabled();
+
+        if (selectedBookmark is not null)
+        {
+            ImGui.SameLine();
+            if (ImGui.Button("Go to bookmark"))
+                MidiPracticeSession.GoToBookmark(selectedBookmark.Id);
+            ImGui.SameLine();
+            if (ImGui.Button("Delete bookmark"))
+            {
+                _practiceToolsWarning = MidiPracticeSession.DeleteBookmark(selectedBookmark.Id);
+                if (_practiceToolsWarning is null)
+                {
+                    _editingBookmarkId = null;
+                    _practiceBookmarkName = "Bookmark";
+                }
+            }
+        }
+
+        ImGui.TextWrapped("Going to a bookmark outside the enabled loop disables the loop and starts an assisted attempt there.");
+    }
+
+    private static void BeginNewLoopDraft()
+    {
+        _editingLoopId = null;
+        _practiceLoopName = "Loop";
+        _loopStart = null;
+        _loopEnd = null;
+    }
+
+    private static void EditLoop(PracticeLoop loop)
+    {
+        _editingLoopId = loop.Id;
+        _practiceLoopName = loop.Name;
+        _loopStart = loop.Range.Start;
+        _loopEnd = loop.Range.End;
+    }
+
+    private static string FormatChartTime(ChartTime? time)
+    {
+        if (time is not { } value)
+            return "not set";
+        var totalSeconds = value.Microseconds / 1_000_000d;
+        return $"{(int)(totalSeconds / 60):00}:{totalSeconds % 60:00.0}";
+    }
+
+    private static string PracticeModeLabel(PracticeMode mode)
+    {
+        return mode switch
+        {
+            PracticeMode.WaitForNotes => "Wait for Notes",
+            PracticeMode.PlayInTime => "Play in Time",
+            PracticeMode.Recital => "Recital",
+            _ => mode.ToString()
+        };
     }
 
     private static string PracticeProgressSummary(
@@ -903,7 +1298,7 @@ public class ScreenCanvas
             {
                 MidiPlayer.SoundFontEngine?.StopAllNote(0);
                 if (IsPracticeMode)
-                    MidiPracticeSession.Restart();
+                    MidiPracticeSession.Pause();
                 else
                 {
                     MidiPlayer.Playback.Stop();
@@ -937,7 +1332,7 @@ public class ScreenCanvas
                         ScreenRecorder.EndRecording();
                         MidiPlayer.SoundFontEngine?.StopAllNote(0);
                         if (IsPracticeMode)
-                            MidiPracticeSession.Restart();
+                            MidiPracticeSession.Pause();
                         else
                         {
                             MidiPlayer.Playback.Stop();
@@ -1044,6 +1439,14 @@ public class ScreenCanvas
             }
             else
                 _comboPlaybackSpeed = false;
+        }
+        else
+        {
+            ImGui.SetCursorScreenPos(new(
+                ImGui.GetIO().DisplaySize.X - ImGuiUtils.FixedSize(new Vector2(220)).X,
+                CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(155)).Y));
+            if (ImGui.Button("Loops & bookmarks"))
+                _showPracticeTools = true;
         }
 
         if (_isHoveringTextBtn)

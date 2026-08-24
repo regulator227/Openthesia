@@ -46,6 +46,34 @@ public sealed class PracticeChartFactoryTests
                 note));
     }
 
+    [Fact]
+    public void PracticeBeatsFollowTempoChanges()
+    {
+        var track = new TrackChunk(
+            new SetTempoEvent(500_000),
+            new NoteOnEvent((SevenBitNumber)60, (SevenBitNumber)100),
+            new SetTempoEvent(1_000_000) { DeltaTime = 480 },
+            new NoteOffEvent((SevenBitNumber)60, (SevenBitNumber)0) { DeltaTime = 480 });
+        var midi = new MidiFile(track)
+        {
+            TimeDivision = new TicksPerQuarterNoteTimeDivision(480)
+        };
+
+        var chart = PracticeChartFactory.FromMidi(
+            ChartIdentity.FromMidi(midi),
+            midi,
+            new[] { PianoHand.Right });
+
+        Assert.Equal(
+            new[]
+            {
+                new PracticeBeat(ChartTime.Zero, IsDownbeat: true),
+                new PracticeBeat(ChartTime.FromMicroseconds(500_000), IsDownbeat: false),
+                new PracticeBeat(ChartTime.FromMicroseconds(1_500_000), IsDownbeat: false)
+            },
+            chart.Beats);
+    }
+
     private static TrackChunk NoteTrack(byte pitch)
     {
         return new TrackChunk(

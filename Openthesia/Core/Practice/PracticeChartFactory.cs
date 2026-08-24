@@ -29,8 +29,37 @@ public static class PracticeChartFactory
                 Hand: hands[index]))
             .ToArray();
         var duration = ToChartTime(midiFile.GetDuration<MetricTimeSpan>());
+        var beats = CreateBeats(midiFile, tempoMap, duration);
 
-        return new PracticeChart(chartId, duration, notes);
+        return new PracticeChart(chartId, duration, notes, beats);
+    }
+
+    private static IReadOnlyList<PracticeBeat> CreateBeats(
+        MidiFile midiFile,
+        TempoMap tempoMap,
+        ChartTime duration)
+    {
+        if (midiFile.TimeDivision is not TicksPerQuarterNoteTimeDivision timeDivision)
+            return Array.Empty<PracticeBeat>();
+
+        var durationTicks = midiFile.GetDuration<MidiTimeSpan>().TimeSpan;
+        var ticksPerBeat = timeDivision.TicksPerQuarterNote;
+        var beats = new List<PracticeBeat>();
+        var beatNumber = 0;
+        for (long ticks = 0; ticks <= durationTicks; ticks += ticksPerBeat)
+        {
+            var position = ToChartTime(TimeConverter.ConvertTo<MetricTimeSpan>(
+                (ITimeSpan)new MidiTimeSpan(ticks),
+                tempoMap));
+            if (position.CompareTo(duration) > 0)
+                break;
+            beats.Add(new PracticeBeat(position, IsDownbeat: beatNumber % 4 == 0));
+            beatNumber++;
+        }
+
+        if (beats.Count == 0 || beats[^1].Position != duration)
+            beats.Add(new PracticeBeat(duration, IsDownbeat: beatNumber % 4 == 0));
+        return beats;
     }
 
     private static ChartTime ToChartTime(MetricTimeSpan time)

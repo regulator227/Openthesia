@@ -6,13 +6,22 @@ public sealed record PracticePreferences(
     PracticeMode Mode,
     RequiredHands RequiredHands,
     Accompaniment Accompaniment,
-    decimal TempoRatio)
+    decimal TempoRatio,
+    int CountInBeats = 4,
+    bool MetronomeEnabled = true,
+    bool CountInOnLoopRepeat = false)
 {
+    public static IReadOnlyList<int> SupportedCountInBeats { get; } =
+        new[] { 0, 2, 4, 8 };
+
     public static PracticePreferences Default { get; } = new(
         PracticeMode.WaitForNotes,
         RequiredHands.Both,
         Accompaniment.Silent,
-        TempoRatio: 1m);
+        TempoRatio: 1m,
+        CountInBeats: 4,
+        MetronomeEnabled: true,
+        CountInOnLoopRepeat: false);
 
     public PracticePreferences WithRequiredHands(RequiredHands requiredHands)
     {
@@ -36,7 +45,7 @@ public sealed record PracticePreferencesSaveResult(
 
 public sealed class PracticePreferencesStore
 {
-    private const int SchemaVersion = 1;
+    private const int SchemaVersion = 2;
     private readonly string _preferencesDirectory;
 
     public PracticePreferencesStore(string dataDirectory)
@@ -60,11 +69,7 @@ public sealed class PracticePreferencesStore
         {
             var document = ReadDocument(path, learnerId, chartId);
             return new PracticePreferencesLoadResult(
-                new PracticePreferences(
-                    ParseMode(document.Mode),
-                    ParseRequiredHands(document.RequiredHands),
-                    ParseAccompaniment(document.Accompaniment),
-                    document.TempoRatio),
+                ToPreferences(document),
                 Warning: null);
         }
         catch (Exception exception) when (JsonFile.IsDataFailure(exception))
@@ -107,7 +112,10 @@ public sealed class PracticePreferencesStore
             Mode = preferences.Mode.ToString(),
             RequiredHands = preferences.RequiredHands.ToString(),
             Accompaniment = preferences.Accompaniment.ToString(),
-            TempoRatio = preferences.TempoRatio
+            TempoRatio = preferences.TempoRatio,
+            CountInBeats = preferences.CountInBeats,
+            MetronomeEnabled = preferences.MetronomeEnabled,
+            CountInOnLoopRepeat = preferences.CountInOnLoopRepeat
         };
         return JsonFile.TryWrite(path, document)
             ? new PracticePreferencesSaveResult(Saved: true, Warning: null)
@@ -129,16 +137,12 @@ public sealed class PracticePreferencesStore
         ChartId expectedChartId)
     {
         var document = JsonFile.Read<PracticePreferencesDocument>(path);
-        if (document.Version != SchemaVersion)
+        if (document.Version is < 1 or > SchemaVersion)
             throw new InvalidDataException($"Unsupported Practice preferences version {document.Version}.");
         if (document.LearnerId != expectedLearnerId.Value || document.ChartId != expectedChartId.Value)
             throw new InvalidDataException("The Practice preferences belong to another Learner or Chart.");
 
-        var preferences = new PracticePreferences(
-            ParseMode(document.Mode),
-            ParseRequiredHands(document.RequiredHands),
-            ParseAccompaniment(document.Accompaniment),
-            document.TempoRatio);
+        var preferences = ToPreferences(document);
         if (!IsValid(preferences))
             throw new InvalidDataException("The Practice preferences contain an invalid configuration.");
 
@@ -183,8 +187,21 @@ public sealed class PracticePreferencesStore
                Enum.IsDefined(preferences.RequiredHands) &&
                Enum.IsDefined(preferences.Accompaniment) &&
                preferences.TempoRatio > 0 &&
+               PracticePreferences.SupportedCountInBeats.Contains(preferences.CountInBeats) &&
                (preferences.RequiredHands != RequiredHands.Both ||
                 preferences.Accompaniment == Accompaniment.Silent);
+    }
+
+    private static PracticePreferences ToPreferences(PracticePreferencesDocument document)
+    {
+        return new PracticePreferences(
+            ParseMode(document.Mode),
+            ParseRequiredHands(document.RequiredHands),
+            ParseAccompaniment(document.Accompaniment),
+            document.TempoRatio,
+            CountInBeats: document.Version >= 2 ? document.CountInBeats : 4,
+            MetronomeEnabled: document.Version >= 2 ? document.MetronomeEnabled : true,
+            CountInOnLoopRepeat: document.Version >= 2 && document.CountInOnLoopRepeat);
     }
 
     private sealed class PracticePreferencesDocument
@@ -196,5 +213,8 @@ public sealed class PracticePreferencesStore
         public string RequiredHands { get; set; } = string.Empty;
         public string Accompaniment { get; set; } = string.Empty;
         public decimal TempoRatio { get; set; }
+        public int CountInBeats { get; set; }
+        public bool MetronomeEnabled { get; set; }
+        public bool CountInOnLoopRepeat { get; set; }
     }
 }
