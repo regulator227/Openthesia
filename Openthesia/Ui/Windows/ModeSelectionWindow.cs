@@ -15,6 +15,8 @@ public class ModeSelectionWindow : ImGuiWindow
 {
     private static PracticePreferences _practicePreferences = PracticePreferences.Default;
     private static PracticeProgress _practiceProgress = PracticeProgress.Empty;
+    private static PracticeNavigation _practiceNavigation = PracticeNavigation.Empty;
+    private static Guid? _selectedLoopId;
     private static (LearnerId LearnerId, ChartId ChartId)? _loadedPreferencesFor;
     private static string? _practiceWarning;
 
@@ -182,6 +184,60 @@ public class ModeSelectionWindow : ImGuiWindow
             }
             ImGui.EndCombo();
         }
+
+        var guidanceX = x + ImGuiUtils.FixedSize(new Vector2(270)).X;
+        ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(250)).X);
+        ImGui.SetCursorPos(new Vector2(guidanceX, y));
+        if (ImGui.BeginCombo("##PracticeCountIn", $"Count-in: {_practicePreferences.CountInBeats} beats"))
+        {
+            foreach (var beats in PracticePreferences.SupportedCountInBeats)
+            {
+                var label = beats == 0 ? "No count-in" : $"{beats} beats";
+                if (ImGui.Selectable(label, beats == _practicePreferences.CountInBeats))
+                    _practicePreferences = _practicePreferences with { CountInBeats = beats };
+            }
+            ImGui.EndCombo();
+        }
+
+        var metronomeEnabled = _practicePreferences.MetronomeEnabled;
+        ImGui.SetCursorPos(new Vector2(
+            guidanceX,
+            y + ImGuiUtils.FixedSize(new Vector2(43)).Y));
+        if (ImGui.Checkbox("Metronome", ref metronomeEnabled))
+            _practicePreferences = _practicePreferences with { MetronomeEnabled = metronomeEnabled };
+
+        var countInOnLoopRepeat = _practicePreferences.CountInOnLoopRepeat;
+        ImGui.SetCursorPos(new Vector2(
+            guidanceX,
+            y + ImGuiUtils.FixedSize(new Vector2(76)).Y));
+        if (ImGui.Checkbox("Count in on every loop pass", ref countInOnLoopRepeat))
+        {
+            _practicePreferences = _practicePreferences with
+            {
+                CountInOnLoopRepeat = countInOnLoopRepeat
+            };
+        }
+
+        var selectedLoop = _selectedLoopId is { } selectedId
+            ? _practiceNavigation.Loops.FirstOrDefault(loop => loop.Id == selectedId)
+            : null;
+        ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(250)).X);
+        ImGui.SetCursorPos(new Vector2(
+            guidanceX,
+            y + ImGuiUtils.FixedSize(new Vector2(114)).Y));
+        if (ImGui.BeginCombo(
+                "##PracticeRange",
+                selectedLoop is null ? "Range: Full Chart" : $"Loop: {selectedLoop.Name}"))
+        {
+            if (ImGui.Selectable("Full Chart", _selectedLoopId is null))
+                _selectedLoopId = null;
+            foreach (var loop in _practiceNavigation.Loops.OrderBy(loop => loop.Range.Start))
+            {
+                if (ImGui.Selectable(loop.Name, loop.Id == _selectedLoopId))
+                    _selectedLoopId = loop.Id;
+            }
+            ImGui.EndCombo();
+        }
     }
 
     private static void RenderRecentProgress()
@@ -189,16 +245,19 @@ public class ModeSelectionWindow : ImGuiWindow
         if (MidiFileData.Context is not { } context || MidiFileData.MidiFile is null)
             return;
 
+        var selectedLoop = _selectedLoopId is { } selectedId
+            ? _practiceNavigation.Loops.FirstOrDefault(loop => loop.Id == selectedId)
+            : null;
         var currentSetup = new ComparablePracticeSetup(
             context.ChartId,
             _practicePreferences.Mode,
             _practicePreferences.RequiredHands,
             _practicePreferences.Accompaniment,
             _practicePreferences.TempoRatio,
-            new PracticeRange(
-                ChartTime.Zero,
-                ChartTime.FromMicroseconds(
-                    MidiFileData.MidiFile.GetDuration<MetricTimeSpan>().TotalMicroseconds)),
+            selectedLoop?.Range ?? new PracticeRange(
+                    ChartTime.Zero,
+                    ChartTime.FromMicroseconds(
+                        MidiFileData.MidiFile.GetDuration<MetricTimeSpan>().TotalMicroseconds)),
             PracticeAssessment.CurrentScoringPolicyVersion);
         var latest = _practiceProgress.Results.LastOrDefault(result => result.Setup == currentSetup);
         if (latest is null)
@@ -272,6 +331,12 @@ public class ModeSelectionWindow : ImGuiWindow
         var key = (learner.Id, context.ChartId);
         if (_loadedPreferencesFor == key)
         {
+            _practiceNavigation = MidiPracticeSession.Navigation;
+            if (_selectedLoopId is { } selectedLoopId &&
+                _practiceNavigation.Loops.All(loop => loop.Id != selectedLoopId))
+            {
+                _selectedLoopId = null;
+            }
             if (MidiPracticeSession.LatestProgress is { } latestProgress)
                 _practiceProgress = latestProgress;
             _practiceWarning = MidiPracticeSession.ProgressWarning ?? _practiceWarning;
@@ -280,9 +345,12 @@ public class ModeSelectionWindow : ImGuiWindow
 
         var loaded = new PracticePreferencesStore(ProgramData.DataPath).Load(learner.Id, context.ChartId);
         var progress = new PracticeProgressStore(ProgramData.DataPath).Load(learner.Id, context.ChartId);
+        var navigation = MidiPracticeSession.LoadNavigation();
         _practicePreferences = loaded.Preferences;
         _practiceProgress = progress.Progress;
-        _practiceWarning = loaded.Warning ?? progress.Warning;
+        _practiceNavigation = navigation.Navigation;
+        _selectedLoopId = null;
+        _practiceWarning = loaded.Warning ?? progress.Warning ?? navigation.Warning;
         _loadedPreferencesFor = key;
     }
 
@@ -317,7 +385,7 @@ public class ModeSelectionWindow : ImGuiWindow
             return;
         }
 
-        _practiceWarning = MidiPracticeSession.Start(_practicePreferences);
+        _practiceWarning = MidiPracticeSession.Start(_practicePreferences, _selectedLoopId);
         if (_practiceWarning is null)
             WindowsManager.SetWindow(Enums.Windows.MidiPlayback);
     }

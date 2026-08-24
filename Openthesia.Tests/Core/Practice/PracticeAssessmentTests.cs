@@ -41,6 +41,9 @@ public sealed class PracticeAssessmentTests
         var feedback = Assert.Single(assessed.Feedback);
         Assert.Equal(expectedJudgment, feedback.Judgment);
         Assert.Equal(offsetMicroseconds, feedback.SignedOffsetMicroseconds);
+        Assert.Equal(
+            expectedJudgment != TimingJudgment.Fantastic,
+            assessment.HasRecordedError);
     }
 
     [Fact]

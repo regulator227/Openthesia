@@ -21,7 +21,10 @@ public sealed class PracticePreferencesStoreTests : IDisposable
             PracticeMode.WaitForNotes,
             RequiredHands.Right,
             Accompaniment.Automatic,
-            TempoRatio: 0.75m);
+            TempoRatio: 0.75m,
+            CountInBeats: 2,
+            MetronomeEnabled: false,
+            CountInOnLoopRepeat: true);
         var store = new PracticePreferencesStore(_dataDirectory);
 
         var saved = store.Save(learner, chart, preferences);
