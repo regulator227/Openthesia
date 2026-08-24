@@ -1,0 +1,1423 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Openthesia Issue 19 — Guided MIDI Setup Prototype</title>
+    <!--
+      PROTOTYPE ONLY — throwaway code for GitHub issue #19.
+      Three variants of guided MIDI setup and reconfiguration, switchable via
+      ?variant=A|B|C, shown inside Openthesia's existing Settings context.
+      This standalone file is not included in the application build and persists nothing.
+    -->
+    <style>
+        :root {
+            color-scheme: dark;
+            font-family: Inter, "Segoe UI", system-ui, sans-serif;
+            --page: #070b12;
+            --panel: #101827;
+            --panel-2: #151f30;
+            --panel-3: #1b293d;
+            --border: #29384f;
+            --border-strong: #496180;
+            --muted: #91a3bc;
+            --text: #f4f7fb;
+            --green: #35cf55;
+            --green-soft: #153923;
+            --blue: #3da4f5;
+            --blue-soft: #133654;
+            --amber: #f1bb58;
+            --amber-soft: #392b16;
+            --red: #ef6680;
+            --violet: #9c7cff;
+            --shadow: 0 22px 65px rgba(0, 0, 0, .45);
+        }
+
+        * { box-sizing: border-box; }
+        html, body { margin: 0; min-height: 100%; background: var(--page); color: var(--text); }
+        body { height: 100vh; overflow: hidden; }
+        button, input, select { font: inherit; }
+        button, select {
+            min-height: 36px;
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            color: var(--text);
+            background: #18243a;
+        }
+        button { cursor: pointer; }
+        button:hover:not(:disabled) { border-color: #6381a8; background: #21324c; }
+        button:disabled { cursor: not-allowed; opacity: .42; }
+        button:focus-visible, select:focus-visible {
+            outline: 3px solid rgba(61, 164, 245, .42);
+            outline-offset: 2px;
+        }
+        .prototype-shell {
+            height: calc(100vh - 72px);
+            display: grid;
+            grid-template-columns: minmax(760px, 1fr) 310px;
+            gap: 14px;
+            padding: 14px;
+        }
+        .app-frame, .decision-panel {
+            min-width: 0;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            border-radius: 15px;
+            background: var(--panel);
+            box-shadow: var(--shadow);
+        }
+        .app-frame { container-type: inline-size; }
+        .decision-panel { padding: 17px; overflow: auto; }
+        .variant { display: none; width: 100%; height: 100%; }
+        .variant.active { display: flex; }
+        .app-screen { flex-direction: column; background: #0b121d; }
+        .app-bar {
+            min-height: 58px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 9px 13px;
+            border-bottom: 1px solid var(--border);
+            background: rgba(9, 15, 25, .97);
+        }
+        .brand {
+            min-width: 185px;
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            font-size: 13px;
+            font-weight: 850;
+        }
+        .brand-mark {
+            width: 30px;
+            height: 30px;
+            display: grid;
+            place-items: center;
+            border-radius: 8px;
+            color: #07130a;
+            background: linear-gradient(135deg, var(--green), var(--blue));
+            font-weight: 950;
+        }
+        .brand small { display: block; color: var(--muted); font-size: 9px; font-weight: 650; }
+        .bar-title { flex: 1; min-width: 0; }
+        .bar-title strong { display: block; font-size: 12px; }
+        .bar-title span { color: var(--muted); font-size: 9px; }
+        .device-pill {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            padding: 6px 9px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            color: #cbd7e8;
+            background: #121d2c;
+            font-size: 9px;
+        }
+        .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); }
+        .status-dot[data-tone="good"] { background: var(--green); }
+        .status-dot[data-tone="quiet"] { background: #6d7d94; }
+        .prototype-tag {
+            padding: 5px 8px;
+            border: 1px dashed #735f37;
+            border-radius: 7px;
+            color: #f6cf87;
+            background: #2a2112;
+            font-size: 8px;
+            font-weight: 850;
+            letter-spacing: .08em;
+        }
+        .scroll-area { flex: 1; min-height: 0; overflow: auto; }
+        .eyebrow {
+            margin: 0 0 7px;
+            color: var(--blue);
+            font-size: 9px;
+            font-weight: 850;
+            letter-spacing: .14em;
+            text-transform: uppercase;
+        }
+        h1, h2, h3, p { margin-top: 0; }
+        .muted { color: var(--muted); }
+        .tiny { font-size: 9px; line-height: 1.45; }
+        .section-title h1 { margin-bottom: 5px; font-size: 23px; }
+        .section-title h2 { margin-bottom: 4px; font-size: 17px; }
+        .section-title p { margin-bottom: 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+        .primary { border-color: #2f8ed2; background: #176aa5; font-weight: 800; }
+        .primary:hover:not(:disabled) { background: #217dbd; }
+        .success { border-color: #319657; background: #1e713d; font-weight: 800; }
+        .ghost { background: transparent; }
+        .danger-quiet { color: #ffadbd; background: #2d1820; }
+        .button-row { display: flex; flex-wrap: wrap; gap: 7px; }
+        .button-row button { padding: 7px 11px; font-size: 9px; }
+        .card {
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--panel-2);
+        }
+        .choice-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
+        .choice-card {
+            min-height: 120px;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: var(--text);
+            background: #141f30;
+            text-align: left;
+        }
+        .choice-card.selected {
+            border-color: var(--blue);
+            background: linear-gradient(145deg, #173a5b, #15243a);
+            box-shadow: inset 0 0 0 1px var(--blue);
+        }
+        .choice-icon {
+            width: 31px;
+            height: 31px;
+            display: grid;
+            place-items: center;
+            margin-bottom: 9px;
+            border-radius: 8px;
+            color: #dcecff;
+            background: #263a57;
+            font-size: 16px;
+        }
+        .choice-card strong { display: block; margin-bottom: 4px; font-size: 11px; }
+        .choice-card span { display: block; color: var(--muted); font-size: 9px; line-height: 1.4; }
+        .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
+        .field-card { padding: 12px; }
+        .field-card h3 { margin-bottom: 4px; font-size: 11px; }
+        .field-card p { margin-bottom: 9px; color: var(--muted); font-size: 9px; line-height: 1.4; }
+        .field-card select { width: 100%; margin-bottom: 8px; padding: 0 9px; font-size: 10px; }
+        .status-line {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            min-height: 29px;
+            margin-top: 8px;
+            padding: 6px 8px;
+            border: 1px solid #394762;
+            border-radius: 8px;
+            color: #d2ddeb;
+            background: #111a29;
+            font-size: 9px;
+        }
+        .status-line[data-tone="good"] { border-color: #2a7443; color: #b6f0c5; background: #12281a; }
+        .status-line[data-tone="warn"] { border-color: #765b2c; color: #f5d797; background: #2b2213; }
+        .status-line[data-tone="quiet"] { color: var(--muted); }
+        .live-note {
+            min-width: 68px;
+            padding: 8px;
+            border-radius: 9px;
+            color: #d8e8ff;
+            background: #182945;
+            text-align: center;
+            font-weight: 900;
+        }
+        .note-pad { display: flex; align-items: end; gap: 4px; min-height: 82px; margin: 10px 0; }
+        .note-key {
+            flex: 1;
+            min-width: 37px;
+            min-height: 72px;
+            padding: 6px 3px;
+            border-color: #a7b5c8;
+            border-radius: 4px 4px 7px 7px;
+            color: #101722;
+            background: #e9eef5;
+            font-size: 8px;
+            font-weight: 850;
+        }
+        .note-key:hover:not(:disabled) { color: #07131e; background: #cce5fa; }
+        .range-track { position: relative; height: 34px; margin: 9px 0; border-radius: 8px; background: #182438; overflow: hidden; }
+        .range-track::before {
+            content: "";
+            position: absolute;
+            inset: 9px;
+            border-radius: 999px;
+            background: repeating-linear-gradient(90deg, #3b4c65 0 1px, transparent 1px 5%);
+        }
+        .range-fill {
+            position: absolute;
+            top: 8px;
+            bottom: 8px;
+            left: var(--range-left, 18%);
+            right: var(--range-right, 18%);
+            border-radius: 999px;
+            background: linear-gradient(90deg, var(--green), var(--blue));
+        }
+        .calibration-number { font-size: 28px; font-weight: 900; }
+        .calibration-number span { color: var(--muted); font-size: 10px; font-weight: 650; }
+        .pulse-lane {
+            position: relative;
+            height: 34px;
+            margin: 9px 0;
+            overflow: hidden;
+            border: 1px solid #30415a;
+            border-radius: 8px;
+            background: #0d1624;
+        }
+        .pulse-lane::after {
+            content: "";
+            position: absolute;
+            top: 4px;
+            bottom: 4px;
+            left: 72%;
+            width: 2px;
+            border-radius: 2px;
+            background: var(--green);
+            box-shadow: 0 0 12px rgba(53, 207, 85, .7);
+        }
+        .pulse-target {
+            position: absolute;
+            top: 8px;
+            left: 4%;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--blue);
+            box-shadow: 0 0 15px rgba(61, 164, 245, .72);
+            opacity: .28;
+        }
+        .pulse-target.active {
+            opacity: 1;
+            animation: timing-pulse 800ms linear forwards;
+        }
+        @keyframes timing-pulse {
+            from { left: 4%; transform: scale(.75); }
+            75% { transform: scale(1); }
+            to { left: 72%; transform: scale(1.35); background: var(--green); }
+        }
+        .step-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-top: 15px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+        }
+        .step-footer .button-row { margin-left: auto; }
+        .readiness-list { display: grid; gap: 7px; }
+        .readiness-row {
+            display: grid;
+            grid-template-columns: 22px minmax(0, 1fr) auto;
+            gap: 8px;
+            align-items: center;
+            padding: 8px;
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            background: #121c2c;
+        }
+        .readiness-icon {
+            width: 22px;
+            height: 22px;
+            display: grid;
+            place-items: center;
+            border-radius: 50%;
+            color: #231b0d;
+            background: var(--amber);
+            font-size: 10px;
+            font-weight: 950;
+        }
+        .readiness-row[data-tone="good"] .readiness-icon { color: #07130a; background: var(--green); }
+        .readiness-row[data-tone="quiet"] .readiness-icon { color: #c5cfdd; background: #5c6a7c; }
+        .readiness-copy strong { display: block; font-size: 9px; }
+        .readiness-copy span { color: var(--muted); font-size: 8px; }
+        .readiness-value { color: #c8d4e5; font-size: 8px; }
+
+        /* Variant A — linear first-run flow */
+        .wizard-body { min-height: 100%; display: grid; grid-template-columns: 190px minmax(0, 1fr); }
+        .wizard-rail { padding: 18px 13px; border-right: 1px solid var(--border); background: #101827; }
+        .wizard-rail h2 { margin-bottom: 5px; font-size: 14px; }
+        .wizard-rail > p { color: var(--muted); font-size: 9px; line-height: 1.45; }
+        .wizard-steps { display: grid; gap: 5px; margin-top: 16px; }
+        .wizard-step-pill {
+            display: grid;
+            grid-template-columns: 24px 1fr;
+            gap: 8px;
+            align-items: center;
+            padding: 7px;
+            border-radius: 8px;
+            color: #8fa0b9;
+            font-size: 9px;
+        }
+        .wizard-step-pill .number {
+            width: 24px;
+            height: 24px;
+            display: grid;
+            place-items: center;
+            border: 1px solid #43536a;
+            border-radius: 50%;
+            font-weight: 850;
+        }
+        .wizard-step-pill.active { color: #e4effc; background: #18324e; }
+        .wizard-step-pill.active .number { border-color: var(--blue); background: #17689f; }
+        .wizard-step-pill.complete .number { border-color: #2f9250; color: #08220f; background: var(--green); }
+        .draft-note {
+            margin-top: 18px;
+            padding: 9px;
+            border: 1px solid #34445c;
+            border-radius: 9px;
+            color: #b5c3d6;
+            background: #111b29;
+            font-size: 8px;
+            line-height: 1.45;
+        }
+        .wizard-main { padding: 22px; overflow: auto; }
+        .wizard-step { display: none; max-width: 820px; margin: 0 auto; }
+        .wizard-step.active { display: block; }
+        .wizard-main .section-title { margin-bottom: 16px; }
+        .summary-hero {
+            display: grid;
+            grid-template-columns: 64px 1fr;
+            gap: 13px;
+            align-items: center;
+            margin-bottom: 13px;
+            padding: 14px;
+            border: 1px solid #2d7745;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #12301d, #132234);
+        }
+        .summary-ring {
+            width: 58px;
+            height: 58px;
+            display: grid;
+            place-items: center;
+            border: 5px solid var(--green);
+            border-radius: 50%;
+            font-weight: 950;
+        }
+
+        /* Variant B — diagnostic workbench */
+        .workbench-body {
+            flex: 1;
+            min-height: 0;
+            display: grid;
+            grid-template-columns: 178px minmax(480px, 1fr) 228px;
+        }
+        .workbench-nav { padding: 12px; border-right: 1px solid var(--border); background: #101827; overflow: auto; }
+        .workbench-nav h2 { margin: 4px 5px 13px; font-size: 13px; }
+        .nav-section { margin-bottom: 14px; }
+        .nav-label { margin: 0 7px 5px; color: #778aa5; font-size: 8px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
+        .nav-row {
+            width: 100%;
+            min-height: 34px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 7px 8px;
+            border-color: transparent;
+            background: transparent;
+            font-size: 9px;
+            text-align: left;
+        }
+        .nav-row.active { border-color: #315d87; background: #18324d; }
+        .nav-badge { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); }
+        .nav-badge[data-tone="good"] { background: var(--green); }
+        .nav-badge[data-tone="quiet"] { background: #65758a; }
+        .workbench-main { min-width: 0; overflow: auto; padding: 13px; background: #0b121d; }
+        .workbench-heading { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+        .workbench-heading h1 { margin-bottom: 3px; font-size: 18px; }
+        .workbench-heading p { margin-bottom: 0; color: var(--muted); font-size: 9px; }
+        .hardware-map { display: grid; grid-template-columns: 1fr 50px 1fr; gap: 8px; align-items: stretch; }
+        .hardware-card { padding: 11px; }
+        .hardware-card h3 { margin-bottom: 7px; font-size: 10px; }
+        .hardware-card select { width: 100%; padding: 0 7px; font-size: 9px; }
+        .signal-arrow { display: grid; place-items: center; color: var(--blue); font-size: 22px; }
+        .diagnostic-grid { display: grid; grid-template-columns: 1.15fr .85fr; gap: 9px; margin-top: 9px; }
+        .diagnostic-card { padding: 11px; }
+        .diagnostic-card h3 { margin-bottom: 4px; font-size: 10px; }
+        .diagnostic-card > p { color: var(--muted); font-size: 8px; line-height: 1.4; }
+        .monitor { display: grid; grid-template-columns: 78px 1fr; gap: 10px; align-items: center; }
+        .signal-bars { height: 38px; display: flex; align-items: end; gap: 3px; }
+        .signal-bars span { flex: 1; border-radius: 3px 3px 1px 1px; background: linear-gradient(var(--blue), #224d74); }
+        .signal-bars span:nth-child(1) { height: 28%; }
+        .signal-bars span:nth-child(2) { height: 51%; }
+        .signal-bars span:nth-child(3) { height: 86%; }
+        .signal-bars span:nth-child(4) { height: 64%; }
+        .signal-bars span:nth-child(5) { height: 39%; }
+        .workbench-summary { padding: 12px; border-left: 1px solid var(--border); background: #101827; overflow: auto; }
+        .workbench-summary h2 { margin-bottom: 4px; font-size: 13px; }
+        .workbench-summary > p { color: var(--muted); font-size: 8px; line-height: 1.4; }
+        .summary-actions { display: grid; gap: 6px; margin-top: 11px; }
+        .summary-actions button { font-size: 9px; }
+        .revision-card { margin-top: 11px; padding: 9px; border: 1px solid #34445b; border-radius: 9px; background: #111b2a; }
+        .revision-card span { display: block; color: var(--muted); font-size: 8px; }
+        .revision-card strong { font-size: 17px; }
+
+        /* Variant C — goal-first adaptive settings */
+        .adaptive-body { min-height: 100%; padding: 17px; background: radial-gradient(circle at 90% 0, rgba(61,164,245,.08), transparent 34%), #0b121d; }
+        .adaptive-header { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 13px; }
+        .adaptive-header h1 { margin-bottom: 3px; font-size: 20px; }
+        .adaptive-header p { margin-bottom: 0; color: var(--muted); font-size: 9px; }
+        .goal-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+        .goal-card {
+            min-height: 81px;
+            display: grid;
+            grid-template-columns: 37px 1fr;
+            gap: 9px;
+            align-items: center;
+            padding: 9px;
+            text-align: left;
+        }
+        .goal-card.selected { border-color: var(--blue); background: #18334f; box-shadow: inset 0 0 0 1px var(--blue); }
+        .goal-card .choice-icon { margin: 0; }
+        .goal-card strong { display: block; margin-bottom: 3px; font-size: 10px; }
+        .goal-card span { display: block; color: var(--muted); font-size: 8px; line-height: 1.35; }
+        .adaptive-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr); gap: 10px; }
+        .settings-stack { display: grid; gap: 7px; }
+        .setting-row {
+            display: grid;
+            grid-template-columns: 35px minmax(145px, .75fr) minmax(190px, 1fr);
+            gap: 10px;
+            align-items: center;
+            min-height: 69px;
+            padding: 9px;
+        }
+        .setting-number {
+            width: 29px;
+            height: 29px;
+            display: grid;
+            place-items: center;
+            border: 1px solid #42536d;
+            border-radius: 50%;
+            color: #d8e5f6;
+            font-size: 9px;
+            font-weight: 900;
+        }
+        .setting-copy strong { display: block; font-size: 10px; }
+        .setting-copy span { color: var(--muted); font-size: 8px; line-height: 1.35; }
+        .setting-control { min-width: 0; }
+        .setting-control select { width: 100%; padding: 0 7px; font-size: 9px; }
+        .setting-control .button-row { justify-content: flex-end; }
+        .setting-control .button-row button { min-height: 31px; }
+        .adaptive-side { padding: 12px; align-self: start; }
+        .adaptive-side h2 { margin-bottom: 4px; font-size: 13px; }
+        .adaptive-side > p { color: var(--muted); font-size: 8px; line-height: 1.4; }
+        .recommendation {
+            margin: 10px 0;
+            padding: 9px;
+            border-left: 3px solid var(--blue);
+            border-radius: 4px 8px 8px 4px;
+            color: #cfe1f8;
+            background: #14253a;
+            font-size: 8px;
+            line-height: 1.45;
+        }
+
+        /* Decision panel and prototype switcher */
+        .decision-panel h1 { margin-bottom: 7px; font-size: 18px; line-height: 1.2; }
+        .decision-panel .summary { color: var(--muted); font-size: 10px; line-height: 1.5; }
+        .tradeoffs { display: grid; gap: 7px; margin: 12px 0 15px; }
+        .tradeoff {
+            padding: 8px 9px;
+            border-left: 3px solid var(--blue);
+            border-radius: 4px 8px 8px 4px;
+            color: #cbd7e8;
+            background: #151f30;
+            font-size: 9px;
+            line-height: 1.42;
+        }
+        .decision-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        .decision-heading h2 { margin: 0; font-size: 11px; }
+        .tiny-button { min-height: 27px; padding: 4px 7px; font-size: 8px; }
+        #state-json {
+            margin: 8px 0 0;
+            padding: 10px;
+            border: 1px solid #25344d;
+            border-radius: 9px;
+            color: #b8cbe6;
+            background: #080e17;
+            font: 8px/1.45 "Cascadia Code", Consolas, monospace;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .ownership-key { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 11px; }
+        .owner-chip {
+            padding: 4px 7px;
+            border: 1px solid #385173;
+            border-radius: 999px;
+            color: #c5d8f0;
+            background: #13233a;
+            font-size: 8px;
+            font-weight: 750;
+        }
+        .prototype-switcher {
+            position: fixed;
+            z-index: 30;
+            left: 50%;
+            bottom: 13px;
+            transform: translateX(-50%);
+            display: grid;
+            grid-template-columns: 39px minmax(230px, auto) 39px;
+            align-items: center;
+            overflow: hidden;
+            border: 1px solid #58708f;
+            border-radius: 999px;
+            background: #0c1522;
+            box-shadow: 0 12px 35px rgba(0,0,0,.55);
+        }
+        .prototype-switcher button {
+            min-height: 43px;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            font-size: 17px;
+        }
+        .switcher-label { padding: 0 15px; text-align: center; font-size: 10px; font-weight: 850; }
+        .switcher-label small { display: block; color: var(--muted); font-size: 8px; font-weight: 600; }
+        [data-mode-show] { display: none; }
+        [data-mode-show].mode-visible { display: block; }
+        .field-grid [data-mode-show].mode-visible { display: block; }
+
+        @container (max-width: 940px) {
+            .wizard-body { grid-template-columns: 150px minmax(0, 1fr); }
+            .workbench-body { grid-template-columns: 145px minmax(430px, 1fr); }
+            .workbench-summary { display: none; }
+            .adaptive-grid { grid-template-columns: 1fr; }
+            .adaptive-side { display: none; }
+        }
+        @media (max-width: 1120px) {
+            .prototype-shell { grid-template-columns: 1fr; }
+            .decision-panel { display: none; }
+        }
+        @media (max-width: 760px) {
+            body { overflow: auto; }
+            .prototype-shell { min-width: 680px; height: 780px; }
+        }
+    </style>
+</head>
+<body>
+    <main class="prototype-shell">
+        <section class="app-frame" aria-label="Interactive setup variants">
+            <section class="variant app-screen variant-a" data-variant="A">
+                <header class="app-bar">
+                    <div class="brand"><div class="brand-mark">O</div><div>Openthesia<small>Device Settings</small></div></div>
+                    <div class="bar-title"><strong>Set up how you play</strong><span>First run or Settings → MIDI setup</span></div>
+                    <div class="device-pill"><span class="status-dot" data-status-dot="ready"></span><span data-bind="readinessShort">Setup incomplete</span></div>
+                    <div class="prototype-tag">PROTOTYPE</div>
+                </header>
+                <div class="scroll-area">
+                    <div class="wizard-body">
+                        <aside class="wizard-rail">
+                            <p class="eyebrow">Variant A</p>
+                            <h2>Guided checklist</h2>
+                            <p>One calm decision at a time. Best for first run and cautious reconfiguration.</p>
+                            <div class="wizard-steps">
+                                <div class="wizard-step-pill" data-step-pill="0"><span class="number">1</span><span>How you want to play</span></div>
+                                <div class="wizard-step-pill" data-step-pill="1"><span class="number">2</span><span>Connect and test</span></div>
+                                <div class="wizard-step-pill" data-step-pill="2"><span class="number">3</span><span>Keyboard range</span></div>
+                                <div class="wizard-step-pill" data-step-pill="3"><span class="number">4</span><span>Practice timing</span></div>
+                                <div class="wizard-step-pill" data-step-pill="4"><span class="number">5</span><span>Review and finish</span></div>
+                            </div>
+                            <div class="draft-note">Reconfiguration is staged. Your active Device Settings stay usable until you choose <strong>Use this setup</strong>.</div>
+                        </aside>
+                        <div class="wizard-main">
+                            <section class="wizard-step" data-wizard-step="0">
+                                <div class="section-title">
+                                    <p class="eyebrow">Step 1 of 5</p>
+                                    <h1>How will you use Openthesia?</h1>
+                                    <p>You can change this later. Choosing a path removes setup steps you do not need.</p>
+                                </div>
+                                <div class="choice-grid">
+                                    <button class="choice-card" data-action="set-mode" data-value="physical">
+                                        <span class="choice-icon">♬</span><strong>Connect a MIDI keyboard</strong><span>Play, hear, and assess notes from a digital piano or controller.</span>
+                                    </button>
+                                    <button class="choice-card" data-action="set-mode" data-value="virtual">
+                                        <span class="choice-icon">⌨</span><strong>Use computer keys</strong><span>Practice a compact range with typing keys and the on-screen piano.</span>
+                                    </button>
+                                    <button class="choice-card" data-action="set-mode" data-value="listen">
+                                        <span class="choice-icon">▶</span><strong>Listen and explore</strong><span>No input device. Browse Charts and use Performance Visualization without assessment.</span>
+                                    </button>
+                                </div>
+                                <div class="step-footer">
+                                    <span class="tiny muted">Selected: <strong data-bind="modeLabel">MIDI keyboard</strong></span>
+                                    <div class="button-row"><button class="primary" data-action="wizard-next">Continue</button></div>
+                                </div>
+                            </section>
+
+                            <section class="wizard-step" data-wizard-step="1">
+                                <div class="section-title">
+                                    <p class="eyebrow">Step 2 of 5</p>
+                                    <h1>Connect and test</h1>
+                                    <p>Input tells Openthesia what you play. Output is where optional MIDI or built-in piano sound goes.</p>
+                                </div>
+                                <div class="field-grid">
+                                    <article class="card field-card" data-mode-show="physical">
+                                        <h3>MIDI input</h3><p>Choose the keyboard that sends your notes.</p>
+                                        <select data-field="inputDevice" aria-label="MIDI input device">
+                                            <option>Keystation 49 MK3</option><option>Digital Piano USB MIDI</option><option>LoopMIDI Port</option>
+                                        </select>
+                                        <div class="button-row"><button data-action="test-input">Listen for a note</button></div>
+                                        <div class="status-line" data-status-line="input"><span class="status-dot" data-status-dot="input"></span><span data-bind="inputStatus">Waiting to test</span></div>
+                                    </article>
+                                    <article class="card field-card" data-mode-show="virtual,listen">
+                                        <h3>Input path</h3><p data-bind="inputPathDescription">Computer keys and mouse provide notes.</p>
+                                        <div class="status-line" data-status-line="input"><span class="status-dot" data-status-dot="input"></span><span data-bind="inputStatus">Ready</span></div>
+                                    </article>
+                                    <article class="card field-card">
+                                        <h3>Sound and MIDI output</h3><p>Internal sound is recommended. External MIDI output remains optional.</p>
+                                        <select data-field="outputDevice" aria-label="Sound and MIDI output">
+                                            <option>Openthesia piano sound</option><option>Digital Piano MIDI Out</option><option>Microsoft GS Wavetable Synth</option><option>No sound</option>
+                                        </select>
+                                        <div class="button-row"><button data-action="test-output">Play test chord</button><button class="ghost" data-action="skip-output">Skip</button></div>
+                                        <div class="status-line" data-status-line="output"><span class="status-dot" data-status-dot="output"></span><span data-bind="outputStatus">Waiting to test</span></div>
+                                    </article>
+                                </div>
+                                <div class="card field-card" data-mode-show="physical">
+                                    <div class="monitor"><div class="live-note"><span data-bind="lastNote">—</span><small class="muted"> last note</small></div><div>
+                                        <strong class="tiny">Try the keyboard</strong>
+                                        <div class="note-pad">
+                                            <button class="note-key" data-action="note" data-note="36">C2</button><button class="note-key" data-action="note" data-note="48">C3</button><button class="note-key" data-action="note" data-note="60">C4</button><button class="note-key" data-action="note" data-note="72">C5</button><button class="note-key" data-action="note" data-note="84">C6</button><button class="note-key" data-action="note" data-note="96">C7</button>
+                                        </div>
+                                        <span class="tiny muted">Prototype: click a piano key to simulate incoming MIDI.</span>
+                                    </div></div>
+                                </div>
+                                <div class="step-footer">
+                                    <button class="ghost" data-action="wizard-back">Back</button>
+                                    <div class="button-row"><button class="primary" data-action="wizard-next">Continue</button></div>
+                                </div>
+                            </section>
+
+                            <section class="wizard-step" data-wizard-step="2">
+                                <div class="section-title">
+                                    <p class="eyebrow">Step 3 of 5</p>
+                                    <h1>Show the keys you can reach</h1>
+                                    <p>Openthesia uses this Device Setting to avoid suggesting notes outside the available keyboard range.</p>
+                                </div>
+                                <div class="card field-card" data-mode-show="physical">
+                                    <div class="button-row"><button class="primary" data-action="capture-low">Play my lowest key</button><button data-action="range-preset" data-low="36" data-high="96">Use 61 keys</button><button data-action="range-preset" data-low="21" data-high="108">Use 88 keys</button><button class="ghost" data-action="clear-range">Clear</button></div>
+                                    <div class="range-track"><span class="range-fill"></span></div>
+                                    <div class="status-line" data-status-line="range"><span class="status-dot" data-status-dot="range"></span><span data-bind="rangeStatus">Range not captured</span></div>
+                                    <div class="note-pad">
+                                        <button class="note-key" data-action="note" data-note="36">C2</button><button class="note-key" data-action="note" data-note="48">C3</button><button class="note-key" data-action="note" data-note="60">C4</button><button class="note-key" data-action="note" data-note="72">C5</button><button class="note-key" data-action="note" data-note="84">C6</button><button class="note-key" data-action="note" data-note="96">C7</button>
+                                    </div>
+                                    <p class="tiny muted" data-bind="rangeInstruction">Choose “Play my lowest key,” then simulate the lowest and highest notes.</p>
+                                </div>
+                                <div class="card field-card" data-mode-show="virtual">
+                                    <h3>Compact virtual range</h3><p>Typing keys cover C4–C5. Z/X shifts the octave, and the on-screen piano remains available.</p>
+                                    <div class="range-track"><span class="range-fill"></span></div>
+                                    <div class="status-line" data-tone="good"><span class="status-dot" data-tone="good"></span><span>C4–C5 selected automatically</span></div>
+                                </div>
+                                <div class="card field-card" data-mode-show="listen">
+                                    <h3>No playable range needed</h3><p>All Charts remain browsable. Guided assessment is unavailable until an input path is configured.</p>
+                                    <div class="status-line" data-tone="quiet"><span class="status-dot" data-tone="quiet"></span><span>Range step skipped</span></div>
+                                </div>
+                                <div class="step-footer">
+                                    <button class="ghost" data-action="wizard-back">Back</button>
+                                    <div class="button-row"><button class="primary" data-action="wizard-next">Continue</button></div>
+                                </div>
+                            </section>
+
+                            <section class="wizard-step" data-wizard-step="3">
+                                <div class="section-title">
+                                    <p class="eyebrow">Step 4 of 5</p>
+                                    <h1>Align practice timing</h1>
+                                    <p>This adjusts assessment timing only. It is separate from the audio driver's buffer latency.</p>
+                                </div>
+                                <div class="card field-card" data-mode-show="physical">
+                                    <div class="field-grid">
+                                        <div>
+                                            <h3>Tap with four clicks</h3><p>Play one note with each visual pulse. Openthesia estimates when your MIDI attacks arrive.</p>
+                                            <div class="pulse-lane" aria-label="Timing calibration pulse"><span class="pulse-target"></span></div>
+                                            <div class="button-row"><button class="primary" data-action="start-pulse">Show pulse</button><button data-action="timing-tap" data-requires-pulse>Play note <span data-bind="tapCount">0/4</span></button><button class="ghost" data-action="skip-timing">Skip for now</button></div>
+                                        </div>
+                                        <div>
+                                            <div class="calibration-number"><span data-bind="timingNumber">—</span> <span>correction</span></div>
+                                            <div class="status-line" data-status-line="timing"><span class="status-dot" data-status-dot="timing"></span><span data-bind="timingStatus">Not calibrated</span></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card field-card" data-mode-show="virtual,listen">
+                                    <h3>Timing calibration is not required</h3><p data-bind="timingPathDescription">Computer-key timing is not used for comparable assessed results in this prototype.</p>
+                                    <div class="status-line" data-tone="quiet"><span class="status-dot" data-tone="quiet"></span><span>Step skipped automatically</span></div>
+                                </div>
+                                <div class="step-footer">
+                                    <button class="ghost" data-action="wizard-back">Back</button>
+                                    <div class="button-row"><button class="primary" data-action="wizard-next">Review setup</button></div>
+                                </div>
+                            </section>
+
+                            <section class="wizard-step" data-wizard-step="4">
+                                <div class="section-title">
+                                    <p class="eyebrow">Step 5 of 5</p>
+                                    <h1>Review before changing Device Settings</h1>
+                                    <p>Incomplete checks remain visible; timing may be skipped without pretending it was calibrated.</p>
+                                </div>
+                                <div class="summary-hero">
+                                    <div class="summary-ring" data-bind="summaryMark">!</div>
+                                    <div><h2 data-bind="readinessTitle">A few checks remain</h2><p class="muted tiny" data-bind="readinessDetail">Finish the required checks or return to an earlier step.</p></div>
+                                </div>
+                                <div class="readiness-list" data-readiness-list></div>
+                                <div class="step-footer">
+                                    <button class="ghost" data-action="wizard-back">Back</button>
+                                    <div class="button-row"><button class="danger-quiet" data-action="reset-draft">Discard draft</button><button class="success" data-action="finish" data-finish>Use this setup</button></div>
+                                </div>
+                            </section>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="variant app-screen variant-b" data-variant="B">
+                <header class="app-bar">
+                    <div class="brand"><div class="brand-mark">O</div><div>Openthesia<small>Device Settings</small></div></div>
+                    <div class="bar-title"><strong>MIDI & practice diagnostics</strong><span>Everything visible in one technical workspace</span></div>
+                    <div class="device-pill"><span class="status-dot" data-status-dot="ready"></span><span data-bind="readinessShort">Setup incomplete</span></div>
+                    <div class="prototype-tag">PROTOTYPE</div>
+                </header>
+                <div class="workbench-body">
+                    <aside class="workbench-nav">
+                        <p class="eyebrow">Variant B</p><h2>Setup workbench</h2>
+                        <div class="nav-section">
+                            <p class="nav-label">Signal path</p>
+                            <button class="nav-row active"><span>Input monitor</span><span class="nav-badge" data-status-dot="input"></span></button>
+                            <button class="nav-row"><span>Output test</span><span class="nav-badge" data-status-dot="output"></span></button>
+                            <button class="nav-row"><span>Keyboard range</span><span class="nav-badge" data-status-dot="range"></span></button>
+                            <button class="nav-row"><span>Practice timing</span><span class="nav-badge" data-status-dot="timing"></span></button>
+                        </div>
+                        <div class="nav-section">
+                            <p class="nav-label">Input capability</p>
+                            <button class="nav-row" data-action="set-mode" data-value="physical"><span>MIDI keyboard</span></button>
+                            <button class="nav-row" data-action="set-mode" data-value="virtual"><span>Computer keys</span></button>
+                            <button class="nav-row" data-action="set-mode" data-value="listen"><span>Listen only</span></button>
+                        </div>
+                    </aside>
+                    <div class="workbench-main">
+                        <div class="workbench-heading">
+                            <div><p class="eyebrow">Live diagnostics</p><h1>Trace the whole note path</h1><p>For Learners who reconfigure devices often or need to troubleshoot a silent keyboard.</p></div>
+                            <div class="button-row"><button class="ghost" data-action="reset-draft">Reset checks</button></div>
+                        </div>
+                        <div class="hardware-map">
+                            <article class="card hardware-card">
+                                <h3>1. Input source</h3>
+                                <select data-field="inputDevice" aria-label="Workbench input device"><option>Keystation 49 MK3</option><option>Digital Piano USB MIDI</option><option>LoopMIDI Port</option><option>Computer keys + mouse</option><option>No input</option></select>
+                                <div class="status-line" data-status-line="input"><span class="status-dot" data-status-dot="input"></span><span data-bind="inputStatus">Waiting to test</span></div>
+                            </article>
+                            <div class="signal-arrow">→</div>
+                            <article class="card hardware-card">
+                                <h3>2. Sound / MIDI destination</h3>
+                                <select data-field="outputDevice" aria-label="Workbench output device"><option>Openthesia piano sound</option><option>Digital Piano MIDI Out</option><option>Microsoft GS Wavetable Synth</option><option>No sound</option></select>
+                                <div class="status-line" data-status-line="output"><span class="status-dot" data-status-dot="output"></span><span data-bind="outputStatus">Waiting to test</span></div>
+                            </article>
+                        </div>
+                        <div class="diagnostic-grid">
+                            <article class="card diagnostic-card">
+                                <h3>Incoming MIDI monitor</h3><p>Start listening, then click a note below to simulate hardware input.</p>
+                                <div class="monitor"><div class="live-note"><span data-bind="lastNote">—</span><small class="muted"> note</small></div><div class="signal-bars"><span></span><span></span><span></span><span></span><span></span></div></div>
+                                <div class="note-pad"><button class="note-key" data-action="note" data-note="36">C2</button><button class="note-key" data-action="note" data-note="48">C3</button><button class="note-key" data-action="note" data-note="60">C4</button><button class="note-key" data-action="note" data-note="72">C5</button><button class="note-key" data-action="note" data-note="84">C6</button><button class="note-key" data-action="note" data-note="96">C7</button></div>
+                                <div class="button-row"><button data-action="test-input">Listen for input</button><button data-action="test-output">Play output chord</button><button class="ghost" data-action="skip-output">Skip output</button></div>
+                            </article>
+                            <article class="card diagnostic-card">
+                                <h3>Practice timing</h3><p>Four taps estimate an assessment correction. Audio buffer controls remain in Audio Settings.</p>
+                                <div class="calibration-number"><span data-bind="timingNumber">—</span> <span>correction</span></div>
+                                <div class="pulse-lane" aria-label="Timing calibration pulse"><span class="pulse-target"></span></div>
+                                <div class="button-row"><button class="primary" data-action="start-pulse">Show pulse</button><button data-action="timing-tap" data-requires-pulse>Play note <span data-bind="tapCount">0/4</span></button><button class="ghost" data-action="skip-timing">Skip</button></div>
+                                <div class="status-line" data-status-line="timing"><span class="status-dot" data-status-dot="timing"></span><span data-bind="timingStatus">Not calibrated</span></div>
+                            </article>
+                            <article class="card diagnostic-card">
+                                <h3>Available key range</h3><p>Capture the hardware endpoints or choose a known size.</p>
+                                <div class="range-track"><span class="range-fill"></span></div>
+                                <div class="button-row"><button data-action="capture-low">Capture endpoints</button><button data-action="range-preset" data-low="36" data-high="96">61 keys</button><button data-action="range-preset" data-low="21" data-high="108">88 keys</button></div>
+                                <div class="status-line" data-status-line="range"><span class="status-dot" data-status-dot="range"></span><span data-bind="rangeStatus">Range not captured</span></div>
+                            </article>
+                            <article class="card diagnostic-card">
+                                <h3>No keyboard connected?</h3><p>Switch capability without leaving diagnostics. The readiness rules adapt immediately.</p>
+                                <div class="button-row"><button data-action="set-mode" data-value="virtual">Use computer keys</button><button data-action="set-mode" data-value="listen">Listen only</button><button data-action="set-mode" data-value="physical">Use MIDI</button></div>
+                                <div class="status-line"><span class="status-dot" data-status-dot="input"></span><span>Current path: <strong data-bind="modeLabel">MIDI keyboard</strong></span></div>
+                            </article>
+                        </div>
+                    </div>
+                    <aside class="workbench-summary">
+                        <p class="eyebrow">Readiness</p><h2 data-bind="readinessTitle">A few checks remain</h2><p data-bind="readinessDetail">Finish the required checks before applying.</p>
+                        <div class="readiness-list" data-readiness-list></div>
+                        <div class="revision-card"><span>Active calibration revision</span><strong data-bind="revision">3</strong><span>Changes only when this draft is applied.</span></div>
+                        <div class="summary-actions"><button class="success" data-action="finish" data-finish>Apply Device Settings</button><button class="ghost" data-action="reset-draft">Cancel draft</button></div>
+                    </aside>
+                </div>
+            </section>
+
+            <section class="variant app-screen variant-c" data-variant="C">
+                <header class="app-bar">
+                    <div class="brand"><div class="brand-mark">O</div><div>Openthesia<small>Settings</small></div></div>
+                    <div class="bar-title"><strong>Play setup</strong><span>A short adaptive section inside the existing Settings page</span></div>
+                    <div class="device-pill"><span class="status-dot" data-status-dot="ready"></span><span data-bind="readinessShort">Setup incomplete</span></div>
+                    <div class="prototype-tag">PROTOTYPE</div>
+                </header>
+                <div class="scroll-area">
+                    <div class="adaptive-body">
+                        <div class="adaptive-header">
+                            <div><p class="eyebrow">Variant C</p><h1>What do you want to do today?</h1><p>Choose a goal; only the settings required for that capability stay visible.</p></div>
+                            <div class="button-row"><button class="ghost" data-action="reset-draft">Undo changes</button></div>
+                        </div>
+                        <div class="goal-strip">
+                            <button class="card goal-card" data-action="set-mode" data-value="physical"><span class="choice-icon">♬</span><span><strong>Practice on my piano</strong><span>Full input, range, and timing checks.</span></span></button>
+                            <button class="card goal-card" data-action="set-mode" data-value="virtual"><span class="choice-icon">⌨</span><span><strong>Try with computer keys</strong><span>Compact range, no hardware setup.</span></span></button>
+                            <button class="card goal-card" data-action="set-mode" data-value="listen"><span class="choice-icon">▶</span><span><strong>Listen and watch</strong><span>No input or assessed Practice Results.</span></span></button>
+                        </div>
+                        <div class="adaptive-grid">
+                            <div class="settings-stack">
+                                <article class="card setting-row" data-mode-show="physical">
+                                    <span class="setting-number">1</span><span class="setting-copy"><strong>Input keyboard</strong><span>Select it and prove a note arrives.</span></span>
+                                    <span class="setting-control"><select data-field="inputDevice" aria-label="Adaptive input device"><option>Keystation 49 MK3</option><option>Digital Piano USB MIDI</option><option>LoopMIDI Port</option></select><span class="button-row"><button data-action="test-input">Listen</button><button data-action="note" data-note="60">Simulate C4</button></span></span>
+                                </article>
+                                <article class="card setting-row" data-mode-show="virtual,listen">
+                                    <span class="setting-number">1</span><span class="setting-copy"><strong>Input capability</strong><span data-bind="inputPathDescription">No hardware required.</span></span>
+                                    <span class="setting-control"><span class="status-line" data-status-line="input"><span class="status-dot" data-status-dot="input"></span><span data-bind="inputStatus">Ready</span></span></span>
+                                </article>
+                                <article class="card setting-row">
+                                    <span class="setting-number">2</span><span class="setting-copy"><strong>Sound destination</strong><span>Hear a chord or explicitly continue silently.</span></span>
+                                    <span class="setting-control"><select data-field="outputDevice" aria-label="Adaptive output device"><option>Openthesia piano sound</option><option>Digital Piano MIDI Out</option><option>Microsoft GS Wavetable Synth</option><option>No sound</option></select><span class="button-row"><button data-action="test-output">Test chord</button><button class="ghost" data-action="skip-output">Skip</button></span></span>
+                                </article>
+                                <article class="card setting-row" data-mode-show="physical">
+                                    <span class="setting-number">3</span><span class="setting-copy"><strong>Keyboard range</strong><span data-bind="rangeStatus">Range not captured</span></span>
+                                    <span class="setting-control"><span class="button-row"><button data-action="capture-low">Capture with notes</button><button data-action="note" data-note="36">C2</button><button data-action="note" data-note="60">C4</button><button data-action="note" data-note="84">C6</button><button data-action="note" data-note="96">C7</button><button data-action="range-preset" data-low="21" data-high="108">88 keys</button></span></span>
+                                </article>
+                                <article class="card setting-row" data-mode-show="physical">
+                                    <span class="setting-number">4</span><span class="setting-copy"><strong>Assessment timing</strong><span data-bind="timingStatus">Not calibrated</span></span>
+                                    <span class="setting-control"><span class="pulse-lane" aria-label="Timing calibration pulse"><span class="pulse-target"></span></span><span class="button-row"><button class="primary" data-action="start-pulse">Show pulse</button><button data-action="timing-tap" data-requires-pulse>Play note <span data-bind="tapCount">0/4</span></button><button class="ghost" data-action="skip-timing">Skip</button></span></span>
+                                </article>
+                            </div>
+                            <aside class="card adaptive-side">
+                                <p class="eyebrow">Your setup</p><h2 data-bind="readinessTitle">A few checks remain</h2><p data-bind="readinessDetail">Finish the required checks before applying.</p>
+                                <div class="recommendation" data-bind="modeRecommendation">Recommended: test the keyboard before capturing its range, then calibrate practice timing.</div>
+                                <div class="readiness-list" data-readiness-list></div>
+                                <div class="summary-actions"><button class="success" data-action="finish" data-finish>Save Play Setup</button><button class="ghost" data-action="reconfigure">Start over</button></div>
+                            </aside>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </section>
+
+        <aside class="decision-panel">
+            <p class="eyebrow">Issue #19 · UI decision prototype</p>
+            <h1 id="decision-title">A — Guided checklist</h1>
+            <p class="summary" id="decision-summary"></p>
+            <div class="tradeoffs" id="decision-tradeoffs"></div>
+            <div class="decision-heading"><h2>Relevant prototype state</h2><button class="tiny-button" data-action="reset-draft">Reset</button></div>
+            <pre id="state-json"></pre>
+            <div class="ownership-key"><span class="owner-chip">Device Settings</span><span class="owner-chip">Draft until applied</span><span class="owner-chip">Calibration revisioned</span><span class="owner-chip">Memory only</span></div>
+        </aside>
+    </main>
+
+    <nav class="prototype-switcher" aria-label="Prototype variants">
+        <button data-action="previous-variant" aria-label="Previous variant">←</button>
+        <div class="switcher-label"><span id="switcher-name">A — Guided checklist</span><small>Use ← → or add ?variant=A|B|C</small></div>
+        <button data-action="next-variant" aria-label="Next variant">→</button>
+    </nav>
+
+    <script>
+        (function () {
+            "use strict";
+
+            var variants = {
+                A: {
+                    name: "Guided checklist",
+                    summary: "A full-screen, linear flow that explains one concept at a time. It works especially well at first run and makes staged reconfiguration explicit.",
+                    tradeoffs: [
+                        "Strongest beginner guidance and clearest explanation of input versus output.",
+                        "Safe reconfiguration: active Device Settings are not replaced until the review step.",
+                        "Slowest path for experienced Learners who regularly swap controllers."
+                    ]
+                },
+                B: {
+                    name: "Diagnostics workbench",
+                    summary: "A dense signal-path workspace keeps devices, live MIDI, range, timing, and readiness visible together.",
+                    tradeoffs: [
+                        "Best for troubleshooting and frequent device changes.",
+                        "Makes the complete signal path and calibration state easy to inspect.",
+                        "Highest cognitive load; less welcoming as the first screen a beginner sees."
+                    ]
+                },
+                C: {
+                    name: "Goal-first adaptive settings",
+                    summary: "A compact section inside Settings starts from the Learner's intent and hides checks that the selected capability does not require.",
+                    tradeoffs: [
+                        "Fastest path, with a first-class route for computer keys and listen-only use.",
+                        "Fits the existing Settings surface without introducing a separate destination.",
+                        "Least room for explanations and deep troubleshooting."
+                    ]
+                }
+            };
+            var variantOrder = ["A", "B", "C"];
+            var variant = new URLSearchParams(window.location.search).get("variant");
+            if (!variants[variant]) variant = "A";
+
+            function initialState() {
+                return {
+                    setupMode: "physical",
+                    inputDevice: "Keystation 49 MK3",
+                    outputDevice: "Openthesia piano sound",
+                    inputTest: "waiting",
+                    outputTest: "waiting",
+                    lastNote: null,
+                    rangeLow: null,
+                    rangeHigh: null,
+                    rangeStage: "idle",
+                    timingSamplesMs: [],
+                    timingOffsetMs: null,
+                    timingSkipped: false,
+                    timingPulseStartedAt: null,
+                    wizardStep: 0,
+                    activeCalibrationRevision: 3,
+                    activeSetup: {
+                        setupMode: "physical",
+                        inputDevice: "Digital Piano USB MIDI",
+                        outputDevice: "Openthesia piano sound",
+                        inputTest: "passed",
+                        outputTest: "passed",
+                        rangeLow: 21,
+                        rangeHigh: 108,
+                        timingOffsetMs: -54,
+                        timingSkipped: false
+                    },
+                    draftDirty: false,
+                    applied: false,
+                    message: "Choose a setup path."
+                };
+            }
+            var state = initialState();
+
+            function noteName(number) {
+                if (number === null || number === undefined) return "—";
+                var names = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
+                return names[number % 12] + (Math.floor(number / 12) - 1);
+            }
+
+            function setMode(mode) {
+                state.setupMode = mode;
+                state.applied = false;
+                state.draftDirty = true;
+                state.lastNote = null;
+                if (mode === "physical") {
+                    state.inputDevice = state.inputDevice === "No input" || state.inputDevice === "Computer keys + mouse" ? "Keystation 49 MK3" : state.inputDevice;
+                    state.inputTest = "waiting";
+                    state.rangeLow = null;
+                    state.rangeHigh = null;
+                    state.rangeStage = "idle";
+                    state.timingSamplesMs = [];
+                    state.timingOffsetMs = null;
+                    state.timingSkipped = false;
+                    state.timingPulseStartedAt = null;
+                    state.message = "Test the MIDI keyboard, then capture its range.";
+                } else if (mode === "virtual") {
+                    state.inputDevice = "Computer keys + mouse";
+                    state.inputTest = "passed";
+                    state.rangeLow = 60;
+                    state.rangeHigh = 72;
+                    state.rangeStage = "complete";
+                    state.timingSamplesMs = [];
+                    state.timingOffsetMs = null;
+                    state.timingSkipped = true;
+                    state.timingPulseStartedAt = null;
+                    state.message = "Computer keys and the on-screen piano are ready.";
+                } else {
+                    state.inputDevice = "No input";
+                    state.inputTest = "skipped";
+                    state.rangeLow = null;
+                    state.rangeHigh = null;
+                    state.rangeStage = "skipped";
+                    state.timingSamplesMs = [];
+                    state.timingOffsetMs = null;
+                    state.timingSkipped = true;
+                    state.timingPulseStartedAt = null;
+                    state.message = "Listen-only mode does not create assessed Practice Results.";
+                }
+                update();
+            }
+
+            function inputReady() {
+                return state.setupMode !== "physical" || state.inputTest === "passed";
+            }
+            function outputReady() {
+                return state.outputTest === "passed" || state.outputTest === "skipped" || state.outputDevice === "No sound";
+            }
+            function rangeReady() {
+                return state.setupMode !== "physical" || (state.rangeLow !== null && state.rangeHigh !== null && state.rangeHigh > state.rangeLow);
+            }
+            function timingReady() {
+                return state.setupMode !== "physical" || state.timingOffsetMs !== null || state.timingSkipped;
+            }
+            function setupReady() {
+                return inputReady() && outputReady() && rangeReady() && timingReady();
+            }
+            function modeLabel() {
+                return state.setupMode === "physical" ? "MIDI keyboard" : state.setupMode === "virtual" ? "Computer keys + mouse" : "Listen and explore";
+            }
+            function inputStatus() {
+                if (state.inputTest === "passed") return state.setupMode === "physical" ? "Note received from " + state.inputDevice : "Ready — no hardware required";
+                if (state.inputTest === "listening") return "Listening — play any note";
+                if (state.inputTest === "skipped") return "No input selected";
+                return "Waiting to test";
+            }
+            function outputStatus() {
+                if (state.outputDevice === "No sound") return "Silent output selected";
+                if (state.outputTest === "passed") return "Test chord sent successfully";
+                if (state.outputTest === "skipped") return "Output test skipped";
+                return "Waiting to test";
+            }
+            function rangeStatus() {
+                if (state.setupMode === "listen") return "Not required";
+                if (state.rangeLow !== null && state.rangeHigh !== null) return noteName(state.rangeLow) + "–" + noteName(state.rangeHigh) + " · " + (state.rangeHigh - state.rangeLow + 1) + " notes";
+                if (state.rangeStage === "low") return "Waiting for the lowest key";
+                if (state.rangeStage === "high") return "Lowest is " + noteName(state.rangeLow) + " — now play the highest key";
+                return "Range not captured";
+            }
+            function timingStatus() {
+                if (state.setupMode !== "physical") return "Not required for this input path";
+                if (state.timingOffsetMs !== null) return "Calibrated from four taps";
+                if (state.timingSkipped) return "Skipped — results marked uncalibrated";
+                if (state.timingSamplesMs.length > 0) return "Tap " + state.timingSamplesMs.length + " of 4 recorded";
+                return "Not calibrated";
+            }
+            function toneFor(ready, skipped) {
+                if (ready && skipped) return "quiet";
+                return ready ? "good" : "warn";
+            }
+            function readinessRows() {
+                return [
+                    { label: "Input", detail: inputStatus(), value: state.inputDevice, ready: inputReady(), skipped: state.inputTest === "skipped" },
+                    { label: "Output", detail: outputStatus(), value: state.outputDevice, ready: outputReady(), skipped: state.outputTest === "skipped" || state.outputDevice === "No sound" },
+                    { label: "Range", detail: rangeStatus(), value: state.setupMode === "listen" ? "Skipped" : "Device Settings", ready: rangeReady(), skipped: state.setupMode === "listen" },
+                    { label: "Practice timing", detail: timingStatus(), value: state.timingOffsetMs === null ? (state.timingSkipped ? "Uncalibrated" : "Pending") : state.timingOffsetMs + " ms", ready: timingReady(), skipped: state.timingSkipped }
+                ];
+            }
+
+            function setText(key, value) {
+                document.querySelectorAll("[data-bind='" + key + "']").forEach(function (element) {
+                    element.textContent = value;
+                });
+            }
+
+            function updateStatus(name, ready, skipped) {
+                var tone = toneFor(ready, skipped);
+                document.querySelectorAll("[data-status-line='" + name + "']").forEach(function (element) {
+                    element.setAttribute("data-tone", tone);
+                });
+                document.querySelectorAll("[data-status-dot='" + name + "']").forEach(function (element) {
+                    element.setAttribute("data-tone", tone);
+                });
+            }
+
+            function renderReadiness() {
+                var html = readinessRows().map(function (row) {
+                    var tone = toneFor(row.ready, row.skipped);
+                    var mark = row.ready ? (row.skipped ? "–" : "✓") : "!";
+                    return "<div class='readiness-row' data-tone='" + tone + "'><span class='readiness-icon'>" + mark + "</span><span class='readiness-copy'><strong>" + row.label + "</strong><span>" + row.detail + "</span></span><span class='readiness-value'>" + row.value + "</span></div>";
+                }).join("");
+                document.querySelectorAll("[data-readiness-list]").forEach(function (element) {
+                    element.innerHTML = html;
+                });
+            }
+
+            function update() {
+                var ready = setupReady();
+                var rows = readinessRows();
+                setText("modeLabel", modeLabel());
+                setText("inputStatus", inputStatus());
+                setText("outputStatus", outputStatus());
+                setText("rangeStatus", rangeStatus());
+                setText("timingStatus", timingStatus());
+                setText("lastNote", noteName(state.lastNote));
+                setText("tapCount", Math.min(state.timingSamplesMs.length, 4) + "/4");
+                setText("timingNumber", state.timingOffsetMs === null ? "—" : (state.timingOffsetMs > 0 ? "+" : "") + state.timingOffsetMs + " ms");
+                setText("revision", state.activeCalibrationRevision);
+                setText("readinessShort", ready ? (state.applied ? "Setup active" : "Ready to apply") : "Setup incomplete");
+                setText("readinessTitle", ready ? (state.applied ? "Setup is active" : "Ready to use") : "A few checks remain");
+                setText("readinessDetail", ready ? (state.applied ? "Device Settings and the calibration revision are active." : "Review the draft, then apply it without interrupting the current setup.") : "Complete or explicitly skip each required check.");
+                setText("summaryMark", ready ? "✓" : "!");
+                setText("inputPathDescription", state.setupMode === "virtual" ? "Computer keys and the on-screen piano provide notes." : "No input is required; Practice assessment stays unavailable.");
+                setText("timingPathDescription", state.setupMode === "virtual" ? "Computer-key timing is not used for comparable assessed results in this prototype." : "There is no input timing to calibrate in listen-only mode.");
+                setText("modeRecommendation", state.setupMode === "physical" ? "Recommended: test the keyboard before capturing its range, then calibrate practice timing." : state.setupMode === "virtual" ? "Start with one-hand beginner Charts inside C4–C5; octave shift remains available." : "Browse any Chart and use playback or Performance Visualization. Configure input later to earn assessed Practice Results.");
+                setText("rangeInstruction", state.rangeStage === "low" ? "Now click the lowest key on the prototype keyboard." : state.rangeStage === "high" ? "Lowest captured. Click the highest key." : "Choose “Play my lowest key,” then simulate the lowest and highest notes.");
+
+                document.querySelectorAll("[data-field]").forEach(function (element) {
+                    if (element.options && Array.from(element.options).some(function (option) { return option.value === state[element.dataset.field]; })) {
+                        element.value = state[element.dataset.field];
+                    }
+                });
+                document.querySelectorAll("[data-action='set-mode']").forEach(function (element) {
+                    element.classList.toggle("selected", element.dataset.value === state.setupMode);
+                });
+                document.querySelectorAll("[data-mode-show]").forEach(function (element) {
+                    var modes = element.dataset.modeShow.split(",");
+                    element.classList.toggle("mode-visible", modes.indexOf(state.setupMode) >= 0);
+                });
+                document.querySelectorAll("[data-wizard-step]").forEach(function (element) {
+                    element.classList.toggle("active", Number(element.dataset.wizardStep) === state.wizardStep);
+                });
+                document.querySelectorAll("[data-step-pill]").forEach(function (element) {
+                    var step = Number(element.dataset.stepPill);
+                    element.classList.toggle("active", step === state.wizardStep);
+                    element.classList.toggle("complete", step < state.wizardStep);
+                });
+                document.querySelectorAll("[data-finish]").forEach(function (element) {
+                    element.disabled = !ready;
+                });
+                document.querySelectorAll("[data-requires-pulse]").forEach(function (element) {
+                    element.disabled = state.timingPulseStartedAt === null;
+                });
+                document.querySelectorAll(".pulse-target").forEach(function (element) {
+                    element.classList.toggle("active", state.timingPulseStartedAt !== null);
+                });
+
+                var low = state.rangeLow === null ? 21 : state.rangeLow;
+                var high = state.rangeHigh === null ? 108 : state.rangeHigh;
+                var left = Math.max(0, Math.min(100, ((low - 21) / 87) * 100));
+                var right = Math.max(0, Math.min(100, ((108 - high) / 87) * 100));
+                document.querySelectorAll(".range-fill").forEach(function (element) {
+                    element.style.setProperty("--range-left", left + "%");
+                    element.style.setProperty("--range-right", right + "%");
+                });
+
+                updateStatus("input", inputReady(), state.inputTest === "skipped");
+                updateStatus("output", outputReady(), state.outputTest === "skipped" || state.outputDevice === "No sound");
+                updateStatus("range", rangeReady(), state.setupMode === "listen");
+                updateStatus("timing", timingReady(), state.timingSkipped);
+                document.querySelectorAll("[data-status-dot='ready']").forEach(function (element) {
+                    element.setAttribute("data-tone", ready ? "good" : "warn");
+                });
+                renderReadiness();
+
+                var publicState = {
+                    variant: variant + " — " + variants[variant].name,
+                    activeConfiguration: Object.assign(
+                        { calibrationRevision: state.activeCalibrationRevision },
+                        state.activeSetup
+                    ),
+                    draft: {
+                        capability: modeLabel(),
+                        input: { device: state.inputDevice, test: state.inputTest, lastNote: noteName(state.lastNote) },
+                        output: { destination: state.outputDevice, test: state.outputTest },
+                        keyboardRange: state.rangeLow === null ? null : { lowest: noteName(state.rangeLow), highest: noteName(state.rangeHigh), noteCount: state.rangeHigh - state.rangeLow + 1 },
+                        practiceTiming: { correctionMs: state.timingOffsetMs, skipped: state.timingSkipped, taps: state.timingSamplesMs.length, pulseActive: state.timingPulseStartedAt !== null }
+                    },
+                    readiness: { readyToApply: ready, applied: state.applied, activeCalibrationRevision: state.activeCalibrationRevision },
+                    note: state.message
+                };
+                document.getElementById("state-json").textContent = JSON.stringify(publicState, null, 2);
+            }
+
+            function showVariant(nextVariant) {
+                variant = nextVariant;
+                var url = new URL(window.location.href);
+                url.searchParams.set("variant", variant);
+                window.history.replaceState({}, "", url);
+                document.querySelectorAll("[data-variant]").forEach(function (element) {
+                    element.classList.toggle("active", element.dataset.variant === variant);
+                });
+                var meta = variants[variant];
+                document.getElementById("decision-title").textContent = variant + " — " + meta.name;
+                document.getElementById("decision-summary").textContent = meta.summary;
+                document.getElementById("decision-tradeoffs").innerHTML = meta.tradeoffs.map(function (tradeoff) {
+                    return "<div class='tradeoff'>" + tradeoff + "</div>";
+                }).join("");
+                document.getElementById("switcher-name").textContent = variant + " — " + meta.name;
+                update();
+            }
+
+            function cycleVariant(direction) {
+                var current = variantOrder.indexOf(variant);
+                showVariant(variantOrder[(current + direction + variantOrder.length) % variantOrder.length]);
+            }
+
+            function captureNote(note) {
+                state.lastNote = note;
+                state.inputTest = "passed";
+                state.draftDirty = true;
+                state.applied = false;
+                if (state.rangeStage === "low") {
+                    state.rangeLow = note;
+                    state.rangeHigh = null;
+                    state.rangeStage = "high";
+                    state.message = "Lowest key captured. Play the highest key.";
+                } else if (state.rangeStage === "high") {
+                    if (note > state.rangeLow) {
+                        state.rangeHigh = note;
+                        state.rangeStage = "complete";
+                        state.message = "Keyboard range captured.";
+                    } else {
+                        state.message = "The highest key must be above " + noteName(state.rangeLow) + ".";
+                    }
+                } else {
+                    state.message = "MIDI input received.";
+                }
+                update();
+            }
+
+            document.addEventListener("click", function (event) {
+                var control = event.target.closest("[data-action]");
+                if (!control) return;
+                var action = control.dataset.action;
+                if (action === "set-mode") setMode(control.dataset.value);
+                else if (action === "wizard-next") { state.wizardStep = Math.min(4, state.wizardStep + 1); update(); }
+                else if (action === "wizard-back") { state.wizardStep = Math.max(0, state.wizardStep - 1); update(); }
+                else if (action === "test-input") {
+                    if (state.setupMode !== "physical") setMode("physical");
+                    state.inputTest = "listening";
+                    state.message = "Listening for a MIDI note.";
+                    state.draftDirty = true;
+                    update();
+                }
+                else if (action === "note") captureNote(Number(control.dataset.note));
+                else if (action === "test-output") {
+                    state.outputTest = state.outputDevice === "No sound" ? "skipped" : "passed";
+                    state.message = state.outputDevice === "No sound" ? "Silent output confirmed." : "Output test chord sent.";
+                    state.draftDirty = true;
+                    state.applied = false;
+                    update();
+                }
+                else if (action === "skip-output") {
+                    state.outputTest = "skipped";
+                    state.message = "Output testing skipped explicitly.";
+                    state.draftDirty = true;
+                    state.applied = false;
+                    update();
+                }
+                else if (action === "capture-low") {
+                    if (state.setupMode !== "physical") setMode("physical");
+                    state.rangeLow = null;
+                    state.rangeHigh = null;
+                    state.rangeStage = "low";
+                    state.message = "Waiting for the lowest key.";
+                    state.draftDirty = true;
+                    update();
+                }
+                else if (action === "range-preset") {
+                    if (state.setupMode !== "physical") setMode("physical");
+                    state.rangeLow = Number(control.dataset.low);
+                    state.rangeHigh = Number(control.dataset.high);
+                    state.rangeStage = "complete";
+                    state.message = "Known keyboard range selected.";
+                    state.draftDirty = true;
+                    state.applied = false;
+                    update();
+                }
+                else if (action === "clear-range") {
+                    state.rangeLow = null;
+                    state.rangeHigh = null;
+                    state.rangeStage = "idle";
+                    state.message = "Keyboard range cleared.";
+                    state.draftDirty = true;
+                    state.applied = false;
+                    update();
+                }
+                else if (action === "start-pulse") {
+                    if (state.setupMode !== "physical") setMode("physical");
+                    state.timingPulseStartedAt = Date.now();
+                    state.message = "Watch the pulse and play when it reaches the green line.";
+                    update();
+                }
+                else if (action === "timing-tap") {
+                    if (state.timingPulseStartedAt === null) {
+                        state.message = "Show a pulse before playing the note.";
+                        update();
+                        return;
+                    }
+                    if (state.timingSamplesMs.length >= 4) state.timingSamplesMs = [];
+                    var measuredOffset = Date.now() - state.timingPulseStartedAt - 800;
+                    state.timingSamplesMs.push(Math.max(-180, Math.min(180, measuredOffset)));
+                    state.timingPulseStartedAt = null;
+                    state.timingSkipped = false;
+                    if (state.timingSamplesMs.length === 4) {
+                        var average = state.timingSamplesMs.reduce(function (total, sample) { return total + sample; }, 0) / 4;
+                        state.timingOffsetMs = -Math.round(average);
+                        state.message = "Practice timing calibrated.";
+                    } else {
+                        state.timingOffsetMs = null;
+                        state.message = "Timing tap " + state.timingSamplesMs.length + " of 4 recorded.";
+                    }
+                    state.draftDirty = true;
+                    state.applied = false;
+                    update();
+                }
+                else if (action === "skip-timing") {
+                    state.timingSamplesMs = [];
+                    state.timingOffsetMs = null;
+                    state.timingSkipped = true;
+                    state.timingPulseStartedAt = null;
+                    state.message = "Practice timing skipped; assessed results will be marked uncalibrated.";
+                    state.draftDirty = true;
+                    state.applied = false;
+                    update();
+                }
+                else if (action === "finish") {
+                    if (!setupReady()) return;
+                    if (state.draftDirty) state.activeCalibrationRevision += 1;
+                    state.activeSetup = {
+                        setupMode: state.setupMode,
+                        inputDevice: state.inputDevice,
+                        outputDevice: state.outputDevice,
+                        inputTest: state.inputTest,
+                        outputTest: state.outputTest,
+                        rangeLow: state.rangeLow,
+                        rangeHigh: state.rangeHigh,
+                        timingOffsetMs: state.timingOffsetMs,
+                        timingSkipped: state.timingSkipped
+                    };
+                    state.draftDirty = false;
+                    state.applied = true;
+                    state.message = "Device Settings applied.";
+                    state.wizardStep = 4;
+                    update();
+                }
+                else if (action === "reset-draft" || action === "reconfigure") {
+                    var revision = state.activeCalibrationRevision;
+                    var activeSetup = state.activeSetup;
+                    state = initialState();
+                    state.activeCalibrationRevision = revision;
+                    state.activeSetup = activeSetup;
+                    state.setupMode = activeSetup.setupMode;
+                    state.inputDevice = activeSetup.inputDevice;
+                    state.outputDevice = activeSetup.outputDevice;
+                    state.inputTest = activeSetup.inputTest;
+                    state.outputTest = activeSetup.outputTest;
+                    state.rangeLow = activeSetup.rangeLow;
+                    state.rangeHigh = activeSetup.rangeHigh;
+                    state.rangeStage = activeSetup.rangeLow === null ? "skipped" : "complete";
+                    state.timingOffsetMs = activeSetup.timingOffsetMs;
+                    state.timingSkipped = activeSetup.timingSkipped;
+                    state.applied = true;
+                    state.message = action === "reconfigure" ? "Reconfiguration draft opened from active Device Settings." : "Draft discarded; active Device Settings restored.";
+                    update();
+                }
+                else if (action === "previous-variant") cycleVariant(-1);
+                else if (action === "next-variant") cycleVariant(1);
+            });
+
+            document.addEventListener("change", function (event) {
+                var field = event.target.dataset.field;
+                if (!field) return;
+                state[field] = event.target.value;
+                state.draftDirty = true;
+                state.applied = false;
+                if (field === "inputDevice") {
+                    if (state[field] === "Computer keys + mouse") setMode("virtual");
+                    else if (state[field] === "No input") setMode("listen");
+                    else {
+                        state.setupMode = "physical";
+                        state.inputTest = "waiting";
+                        state.rangeLow = null;
+                        state.rangeHigh = null;
+                        state.timingOffsetMs = null;
+                        state.timingSkipped = false;
+                        state.message = "New input selected; test and recalibrate it.";
+                    }
+                }
+                if (field === "outputDevice") {
+                    state.outputTest = state[field] === "No sound" ? "skipped" : "waiting";
+                    state.message = "Output changed; test it or explicitly skip.";
+                }
+                update();
+            });
+
+            document.addEventListener("keydown", function (event) {
+                var tag = event.target.tagName;
+                if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || event.target.isContentEditable) return;
+                if (event.key === "ArrowLeft") cycleVariant(-1);
+                if (event.key === "ArrowRight") cycleVariant(1);
+            });
+
+            showVariant(variant);
+        }());
+    </script>
+</body>
+</html>
