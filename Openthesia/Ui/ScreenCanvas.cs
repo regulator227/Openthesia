@@ -15,6 +15,7 @@ using ScreenRecorderLib;
 using Note = Melanchall.DryWetMidi.Interaction.Note;
 using static Openthesia.Core.ScreenCanvasControls;
 using Openthesia.Core.Plugins;
+using Openthesia.Core.Practice;
 using Openthesia.Core.FileDialogs;
 using Vanara.PInvoke;
 
@@ -207,6 +208,9 @@ public class ScreenCanvas
     {
         var drawList = ImGui.GetWindowDrawList();
 
+        if (IsPracticeMode)
+            MidiPracticeSession.Advance();
+
         if (MidiPlayer.IsTimerRunning)
         {
             MidiPlayer.Timer += ImGui.GetIO().DeltaTime * 100f * (float)MidiPlayer.Playback.Speed * FallSpeedVal;
@@ -214,7 +218,6 @@ public class ScreenCanvas
 
         int index = 0;
         var notes = MidiFileData.Notes;
-        bool missingNote = false;
         foreach (Note note in notes)
         {
             var time = (float)note.TimeAs<MetricTimeSpan>(MidiFileData.TempoMap).TotalSeconds * FallSpeedVal;
@@ -230,7 +233,7 @@ public class ScreenCanvas
 
             float py1;
             float py2;
-            if (UpDirection && !IsLearningMode && !IsEditMode)
+            if (UpDirection && !IsEditMode)
             {
                 py1 = PianoRenderer.P.Y + time * 100 - MidiPlayer.Timer;
                 py2 = PianoRenderer.P.Y + time * 100 + length * 100 - MidiPlayer.Timer;
@@ -249,31 +252,6 @@ public class ScreenCanvas
 
                 py1 -= length * 100;
                 py2 -= length * 100;
-
-                if (IsLearningMode)
-                {
-                    if (py2 > PianoRenderer.P.Y - 1.5f && py2 < PianoRenderer.P.Y)
-                    {
-                        if (IsNoteEnabled(index) && !IOHandle.PressedKeys.Contains(note.NoteNumber))
-                        {
-                            missingNote = true;
-                            MidiPlayer.StopTimer();
-                            MidiPlayer.Playback.Stop();
-
-                            if (note.NoteName.ToString().EndsWith("Sharp"))
-                            {
-                                var v3 = new Vector3(col.X, col.Y, col.Z);
-                                ImGui.GetForegroundDrawList().AddCircleFilled(new(PianoRenderer.P.X + PianoRenderer.BlackNoteToKey.GetValueOrDefault(note.NoteNumber, 0) * PianoRenderer.Width + PianoRenderer.Width * 3 / 4 + 10,
-                                    py2 + PianoRenderer.Height / 1.7f), 7, ImGui.GetColorU32(new Vector4(v3, 1)));
-                            }
-                            else
-                            {
-                                ImGui.GetForegroundDrawList().AddCircleFilled(new(PianoRenderer.P.X + PianoRenderer.WhiteNoteToKey.GetValueOrDefault(note.NoteNumber, 0) * PianoRenderer.Width + PianoRenderer.Width / 2,
-                                    py2 + PianoRenderer.Height / 1.2f), 7, ImGui.GetColorU32(col));
-                            }
-                        }
-                    }
-                }
 
                 if (IsEditMode && !_isProgressBarHovered && !_isProgressBarActive)
                 {
@@ -496,16 +474,72 @@ public class ScreenCanvas
             }
             index++;
         }
-        if (IsLearningMode && !MidiPlayer.IsTimerRunning && !missingNote)
+        DrawPracticeTarget();
+        DrawPracticeFeedback();
+    }
+
+    private static void DrawPracticeTarget()
+    {
+        var target = MidiPracticeSession.Snapshot?.Target;
+        if (target is null)
+            return;
+
+        foreach (var pitch in target.Pitches)
         {
-            MidiPlayer.StartTimer();
-            MidiPlayer.Playback.Start();
+            ImGui.GetForegroundDrawList().AddCircleFilled(
+                PracticePitchCenter(pitch),
+                7,
+                ImGui.GetColorU32(ThemeManager.RightHandCol));
         }
+    }
+
+    private static void DrawPracticeFeedback()
+    {
+        foreach (var pitchFeedback in MidiPracticeSession.LatestFeedback.GroupBy(item => item.Pitch))
+        {
+            var row = 0;
+            foreach (var feedback in pitchFeedback)
+            {
+                var label = feedback.Judgment switch
+                {
+                    TimingJudgment.Fantastic => "Fantastic",
+                    TimingJudgment.Early => $"Early {Math.Abs(feedback.SignedOffsetMicroseconds ?? 0) / 1_000m:0} ms",
+                    TimingJudgment.Late => $"Late {Math.Abs(feedback.SignedOffsetMicroseconds ?? 0) / 1_000m:0} ms",
+                    TimingJudgment.Miss => "Miss",
+                    TimingJudgment.Extra => "Extra",
+                    _ => feedback.Judgment.ToString()
+                };
+                var center = PracticePitchCenter(feedback.Pitch);
+                var position = new Vector2(
+                    center.X - ImGui.CalcTextSize(label).X / 2,
+                    center.Y - ImGuiUtils.FixedSize(new Vector2(32 + row * 18)).Y);
+                var color = feedback.Judgment switch
+                {
+                    TimingJudgment.Fantastic => new Vector4(0.20f, 0.85f, 0.35f, 1),
+                    TimingJudgment.Early or TimingJudgment.Late => new Vector4(1f, 0.72f, 0.15f, 1),
+                    _ => new Vector4(0.95f, 0.25f, 0.25f, 1)
+                };
+                ImGui.GetForegroundDrawList().AddText(position, ImGui.GetColorU32(color), label);
+                row++;
+            }
+        }
+    }
+
+    private static Vector2 PracticePitchCenter(byte pitch)
+    {
+        var noteNumber = (SevenBitNumber)pitch;
+        return PianoRenderer.BlackNoteToKey.TryGetValue(noteNumber, out var blackKey)
+            ? new Vector2(
+                PianoRenderer.P.X + blackKey * PianoRenderer.Width + PianoRenderer.Width * 0.75f + 10,
+                PianoRenderer.P.Y + PianoRenderer.Height / 1.7f)
+            : new Vector2(
+                PianoRenderer.P.X + PianoRenderer.WhiteNoteToKey.GetValueOrDefault(noteNumber, 0) * PianoRenderer.Width + PianoRenderer.Width / 2,
+                PianoRenderer.P.Y + PianoRenderer.Height / 1.2f);
     }
 
     private static void GetPlaybackInputs()
     {
-        if (!IsLearningMode && !_isHoveringTextBtn)
+        if (!_isHoveringTextBtn)
         {
             if (ImGui.GetIO().MouseWheel != 0)
             {
@@ -513,12 +547,9 @@ public class ScreenCanvas
                 {
                     float scrollAmount = ImGui.GetIO().MouseWheel * 0.5f;
                     float newTime = Math.Clamp(MidiPlayer.Seconds - scrollAmount, 0, (float)MidiFileData.MidiFile.GetDuration<MetricTimeSpan>().TotalSeconds);
-                    long ms = (long)(newTime * 1000000);
-                    MidiPlayer.Playback.MoveToTime(new MetricTimeSpan(ms));
-                    MidiPlayer.Seconds = newTime;
-                    MidiPlayer.Timer = newTime * 100 * FallSpeedVal;
+                    SeekPlaybackTo(newTime);
                 }
-                else
+                else if (!IsPracticeMode)
                 {
                     float speedDelta = ImGui.GetIO().MouseWheel * 0.25f;
                     float newSpeed = (float)(MidiPlayer.Playback.Speed + speedDelta);
@@ -539,26 +570,26 @@ public class ScreenCanvas
             _panVelocity *= decelerationFactor;
             float targetTime = Math.Clamp(MidiPlayer.Seconds + _panVelocity, 0, (float)MidiPlayer.Playback.GetDuration<MetricTimeSpan>().TotalSeconds);
             var newTime = Lerp(MidiPlayer.Seconds, targetTime, interpolationFactor);
-            long ms = (long)(newTime * 1000000);
-            MidiPlayer.Playback.MoveToTime(new MetricTimeSpan(ms));
-            MidiPlayer.Seconds = newTime;
-            MidiPlayer.Timer = MidiPlayer.Seconds * 100 * FallSpeedVal;
+            SeekPlaybackTo(newTime);
         }
 
         if (ImGui.IsKeyPressed(ImGuiKey.Space, false))
         {
-            MidiPlayer.IsTimerRunning = !MidiPlayer.IsTimerRunning;
-            if (MidiPlayer.IsTimerRunning)
+            if (IsPracticeMode)
             {
-                MidiPlayer.Playback.Start();
+                MidiPracticeSession.TogglePause();
             }
             else
             {
-                MidiPlayer.Playback.Stop();
+                MidiPlayer.IsTimerRunning = !MidiPlayer.IsTimerRunning;
+                if (MidiPlayer.IsTimerRunning)
+                    MidiPlayer.Playback.Start();
+                else
+                    MidiPlayer.Playback.Stop();
             }
         }
 
-        if (ImGui.IsKeyPressed(ImGuiKey.R, false) && !CoreSettings.KeyboardInput && !IsLearningMode && !IsEditMode)
+        if (ImGui.IsKeyPressed(ImGuiKey.R, false) && !CoreSettings.KeyboardInput && !IsEditMode)
         {
             SetUpDirection(!UpDirection);
         }
@@ -572,19 +603,29 @@ public class ScreenCanvas
         {
             float n = ImGui.GetIO().KeyCtrl ? 0.1f : 1f;
             var newTime = Math.Clamp(MidiPlayer.Seconds + n, 0, (float)MidiFileData.MidiFile.GetDuration<MetricTimeSpan>().TotalSeconds);
-            long ms = (long)(newTime * 1000000);
-            MidiPlayer.Playback.MoveToTime(new MetricTimeSpan(ms));
-            MidiPlayer.Timer = newTime * 100 * FallSpeedVal;
+            SeekPlaybackTo(newTime);
         }
 
         if (ImGui.IsKeyPressed(ImGuiKey.LeftArrow))
         {
             float n = ImGui.GetIO().KeyCtrl ? 0.1f : 1f;
             var newTime = Math.Clamp(MidiPlayer.Seconds - n, 0, (float)MidiFileData.MidiFile.GetDuration<MetricTimeSpan>().TotalSeconds);
-            long ms = (long)(newTime * 1000000);
-            MidiPlayer.Playback.MoveToTime(new MetricTimeSpan(ms));
-            MidiPlayer.Timer = newTime * 100 * FallSpeedVal;
+            SeekPlaybackTo(newTime);
         }
+    }
+
+    private static void SeekPlaybackTo(float seconds)
+    {
+        var microseconds = Math.Max(0, (long)(seconds * 1_000_000));
+        if (IsPracticeMode)
+        {
+            MidiPracticeSession.Seek(ChartTime.FromMicroseconds(microseconds));
+            return;
+        }
+
+        MidiPlayer.Playback.MoveToTime(new MetricTimeSpan(microseconds));
+        MidiPlayer.Seconds = seconds;
+        MidiPlayer.Timer = seconds * 100 * FallSpeedVal;
     }
 
     private static void GetInputs()
@@ -599,38 +640,35 @@ public class ScreenCanvas
             CoreSettings.SetNeonFx(!CoreSettings.NeonFx);
         }
 
-        if (!IsLearningMode)
+        if (ImGui.IsKeyPressed(ImGuiKey.UpArrow, false))
         {
-            if (ImGui.IsKeyPressed(ImGuiKey.UpArrow, false))
+            switch (FallSpeed)
             {
-                switch (FallSpeed)
-                {
-                    case FallSpeeds.Slow:
-                        SetFallSpeed(FallSpeeds.Default);
-                        break;
-                    case FallSpeeds.Default:
-                        SetFallSpeed(FallSpeeds.Fast);
-                        break;
-                    case FallSpeeds.Fast:
-                        SetFallSpeed(FallSpeeds.Faster);
-                        break;
-                }
+                case FallSpeeds.Slow:
+                    SetFallSpeed(FallSpeeds.Default);
+                    break;
+                case FallSpeeds.Default:
+                    SetFallSpeed(FallSpeeds.Fast);
+                    break;
+                case FallSpeeds.Fast:
+                    SetFallSpeed(FallSpeeds.Faster);
+                    break;
             }
+        }
 
-            if (ImGui.IsKeyPressed(ImGuiKey.DownArrow, false))
+        if (ImGui.IsKeyPressed(ImGuiKey.DownArrow, false))
+        {
+            switch (FallSpeed)
             {
-                switch (FallSpeed)
-                {
-                    case FallSpeeds.Faster:
-                        SetFallSpeed(FallSpeeds.Fast);
-                        break;
-                    case FallSpeeds.Fast:
-                        SetFallSpeed(FallSpeeds.Default);
-                        break;
-                    case FallSpeeds.Default:
-                        SetFallSpeed(FallSpeeds.Slow);
-                        break;
-                }
+                case FallSpeeds.Faster:
+                    SetFallSpeed(FallSpeeds.Fast);
+                    break;
+                case FallSpeeds.Fast:
+                    SetFallSpeed(FallSpeeds.Default);
+                    break;
+                case FallSpeeds.Default:
+                    SetFallSpeed(FallSpeeds.Slow);
+                    break;
             }
         }
     }
@@ -653,6 +691,8 @@ public class ScreenCanvas
                 DrawInputNotes();
             else
                 DrawPlaybackNotes();
+
+            DrawPracticeStatus();
 
             GetInputs();
 
@@ -685,6 +725,100 @@ public class ScreenCanvas
         }
     }
 
+    private static void DrawPracticeStatus()
+    {
+        if (MidiPracticeSession.Snapshot is not { } snapshot)
+            return;
+
+        var mode = MidiPracticeSession.Mode switch
+        {
+            PracticeMode.WaitForNotes => "Wait for Notes",
+            PracticeMode.PlayInTime => "Play in Time",
+            PracticeMode.Recital => "Recital",
+            _ => "Practice"
+        };
+        var status = snapshot.State switch
+        {
+            PracticeSessionState.Running => $"{mode} · Playing",
+            PracticeSessionState.WaitingForInput => $"{mode} · Play the highlighted target",
+            PracticeSessionState.LearnerPaused => $"{mode} · Paused",
+            PracticeSessionState.Completed => $"{mode} · Completed",
+            _ => $"{mode} · {snapshot.State}"
+        };
+        ImGui.SetCursorScreenPos(new Vector2(
+            (ImGui.GetIO().DisplaySize.X - ImGui.CalcTextSize(status).X) / 2,
+            CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(18)).Y));
+        ImGui.Text(status);
+
+        if (MidiPracticeSession.LatestResult is { } result)
+        {
+            var timing = result.Timing is null
+                ? "Timing N/A"
+                : $"Timing {result.Timing.AverageAbsoluteErrorMicroseconds / 1_000m:0} ms avg";
+            var assisted = result.Assisted ? " · Assisted" : string.Empty;
+            var summary = $"Completion {result.Completion.Ratio:P1} · " +
+                          $"Accuracy {result.Accuracy.RequiredNotesHitRatio:P1} · " +
+                          $"{result.Accuracy.ExtraNotes} Extra · {timing}{assisted}";
+            ImGui.SetCursorScreenPos(new Vector2(
+                (ImGui.GetIO().DisplaySize.X - ImGui.CalcTextSize(summary).X) / 2,
+                CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(42)).Y));
+            ImGui.Text(summary);
+
+            if (MidiPracticeSession.LatestProgress is { } practiceProgress)
+            {
+                var progress = practiceProgress.For(
+                    result.Setup,
+                    result.Timing?.CalibrationRevision ?? 0);
+                var progressSummary = PracticeProgressSummary(result, progress);
+                ImGui.SetCursorScreenPos(new Vector2(
+                    (ImGui.GetIO().DisplaySize.X - ImGui.CalcTextSize(progressSummary).X) / 2,
+                    CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(66)).Y));
+                ImGui.Text(progressSummary);
+            }
+        }
+
+        if (MidiPracticeSession.ProgressWarning is { } warning)
+        {
+            ImGui.SetCursorScreenPos(new Vector2(
+                (ImGui.GetIO().DisplaySize.X - ImGui.CalcTextSize(warning).X) / 2,
+                CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(90)).Y));
+            ImGui.Text(warning);
+        }
+    }
+
+    private static string PracticeProgressSummary(
+        PracticeResult result,
+        PracticeProgressSnapshot progress)
+    {
+        var parts = new List<string>();
+        if (progress.BestAccuracy is { } accuracyBest)
+        {
+            parts.Add(
+                $"Accuracy PB {accuracyBest.Result.Accuracy.RequiredNotesHitRatio:P1}/" +
+                $"{accuracyBest.Result.Accuracy.ExtraNotes} Extra" +
+                PersonalBestStatus(result, accuracyBest));
+        }
+        if (progress.BestTiming is { } timingBest)
+        {
+            parts.Add(
+                $"Timing PB {timingBest.Result.Timing!.AverageAbsoluteErrorMicroseconds / 1_000m:0} ms" +
+                PersonalBestStatus(result, timingBest));
+        }
+        if (progress.FirstCompletion is { } firstCompletion)
+            parts.Add($"First completion {firstCompletion.Result.EndedAtUtc.ToLocalTime():d}");
+        parts.Add(
+            $"Trend A/E/T {progress.RecentTrend.Accuracy}/" +
+            $"{progress.RecentTrend.Extras}/{progress.RecentTrend.Timing}");
+        return string.Join(" · ", parts);
+    }
+
+    private static string PersonalBestStatus(PracticeResult result, PracticePersonalBest best)
+    {
+        if (best.LatestMatchedAtUtc != result.EndedAtUtc)
+            return string.Empty;
+        return best.MatchCount == 1 ? " achieved" : $" matched ×{best.MatchCount}";
+    }
+
     private static void DrawProgressBar()
     {
         ImGui.SetNextItemWidth(ImGui.GetIO().DisplaySize.X);
@@ -705,9 +839,7 @@ public class ScreenCanvas
         if (ImGui.SliderFloat("##Progress slider", ref MidiPlayer.Seconds, 0, (float)MidiFileData.MidiFile.GetDuration<MetricTimeSpan>().TotalSeconds, "%.1f",
             ImGuiSliderFlags.NoRoundToFormat | ImGuiSliderFlags.AlwaysClamp | ImGuiSliderFlags.NoInput))
         {
-            long ms = (long)(MidiPlayer.Seconds * 1000000);
-            MidiPlayer.Playback.MoveToTime(new MetricTimeSpan(ms));
-            MidiPlayer.Timer = MidiPlayer.Seconds * 100 * FallSpeedVal;
+            SeekPlaybackTo(MidiPlayer.Seconds);
         }
         _isProgressBarActive = ImGui.IsItemActive();
         _isProgressBarHovered = ImGui.IsItemHovered();
@@ -741,8 +873,13 @@ public class ScreenCanvas
             ImGuiTheme.Style.Colors[(int)ImGuiCol.Text] = playColor;
             if (ImGui.Button($"{FontAwesome6.Play}", new(ImGuiUtils.FixedSize(new Vector2(50)).X, ImGui.GetWindowSize().Y)))
             {
-                MidiPlayer.Playback.Start();
-                MidiPlayer.StartTimer();
+                if (IsPracticeMode)
+                    MidiPracticeSession.Resume();
+                else
+                {
+                    MidiPlayer.Playback.Start();
+                    MidiPlayer.StartTimer();
+                }
             }
             ImGuiTheme.Style.Colors[(int)ImGuiCol.Text] = Vector4.One;
             var pauseColor = MidiPlayer.IsTimerRunning ? Vector4.One : new(0.70f, 0.22f, 0.22f, 1);
@@ -751,8 +888,13 @@ public class ScreenCanvas
             ImGuiTheme.Style.Colors[(int)ImGuiCol.Text] = pauseColor;
             if (ImGui.Button($"{FontAwesome6.Pause}", new(ImGuiUtils.FixedSize(new Vector2(50)).X, ImGui.GetWindowSize().Y)))
             {
-                MidiPlayer.Playback.Stop();
-                MidiPlayer.IsTimerRunning = false;
+                if (IsPracticeMode)
+                    MidiPracticeSession.Pause();
+                else
+                {
+                    MidiPlayer.Playback.Stop();
+                    MidiPlayer.IsTimerRunning = false;
+                }
             }
             ImGuiTheme.Style.Colors[(int)ImGuiCol.Text] = Vector4.One;
             ImGui.SameLine();
@@ -760,10 +902,15 @@ public class ScreenCanvas
             if (ImGui.Button($"{FontAwesome6.Stop}", new(ImGuiUtils.FixedSize(new Vector2(50)).X, ImGui.GetWindowSize().Y)) || ImGui.IsKeyPressed(ImGuiKey.Backspace, false))
             {
                 MidiPlayer.SoundFontEngine?.StopAllNote(0);
-                MidiPlayer.Playback.Stop();
-                MidiPlayer.Playback.MoveToStart();
-                MidiPlayer.IsTimerRunning = false;
-                MidiPlayer.Timer = 0;
+                if (IsPracticeMode)
+                    MidiPracticeSession.Restart();
+                else
+                {
+                    MidiPlayer.Playback.Stop();
+                    MidiPlayer.Playback.MoveToStart();
+                    MidiPlayer.IsTimerRunning = false;
+                    MidiPlayer.Timer = 0;
+                }
             }
             ImGui.SameLine();
             // RECORD SCREEN BUTTON
@@ -777,17 +924,27 @@ public class ScreenCanvas
                         ScreenRecorder.StartRecording();
                         if (CoreSettings.VideoRecStartsPlayback)
                         {
-                            MidiPlayer.Playback.Start();
-                            MidiPlayer.StartTimer();
+                            if (IsPracticeMode)
+                                MidiPracticeSession.Resume();
+                            else
+                            {
+                                MidiPlayer.Playback.Start();
+                                MidiPlayer.StartTimer();
+                            }
                         }
                         break;
                     case RecorderStatus.Recording:
                         ScreenRecorder.EndRecording();
                         MidiPlayer.SoundFontEngine?.StopAllNote(0);
-                        MidiPlayer.Playback.Stop();
-                        MidiPlayer.Playback.MoveToStart();
-                        MidiPlayer.IsTimerRunning = false;
-                        MidiPlayer.Timer = 0;
+                        if (IsPracticeMode)
+                            MidiPracticeSession.Restart();
+                        else
+                        {
+                            MidiPlayer.Playback.Stop();
+                            MidiPlayer.Playback.MoveToStart();
+                            MidiPlayer.IsTimerRunning = false;
+                            MidiPlayer.Timer = 0;
+                        }
                         break;
                 }
             }
@@ -804,7 +961,7 @@ public class ScreenCanvas
         var icon = LockTopBar ? FontAwesome6.Lock : FontAwesome6.LockOpen;
         var showTextIcon = ShowTextNotes ? FontAwesome6.TextHeight : FontAwesome6.TextSlash;
 
-        if (!IsLearningMode && !IsEditMode)
+        if (!IsEditMode)
         {
             // NOTES DIRECTION BUTTON
             ImGui.PushFont(FontController.Font16_Icon16);
@@ -850,26 +1007,26 @@ public class ScreenCanvas
         }
         ImGui.PopFont();
 
-        if (!IsLearningMode)
+        // FALLSPEED DROPDOWN LIST
+        ImGui.SetCursorScreenPos(new(ImGui.GetIO().DisplaySize.X - ImGuiUtils.FixedSize(new Vector2(220)).X, CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(110)).Y));
+        if (ImGui.BeginCombo("##Fall speed", $"{FallSpeed}",
+            ImGuiComboFlags.WidthFitPreview | ImGuiComboFlags.HeightLarge))
         {
-            // FALLSPEED DROPDOWN LIST
-            ImGui.SetCursorScreenPos(new(ImGui.GetIO().DisplaySize.X - ImGuiUtils.FixedSize(new Vector2(220)).X, CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(110)).Y));
-            if (ImGui.BeginCombo("##Fall speed", $"{FallSpeed}",
-                ImGuiComboFlags.WidthFitPreview | ImGuiComboFlags.HeightLarge))
+            _comboFallSpeed = true;
+            foreach (var speed in Enum.GetValues(typeof(FallSpeeds)))
             {
-                _comboFallSpeed = true;
-                foreach (var speed in Enum.GetValues(typeof(FallSpeeds)))
+                if (ImGui.Selectable(speed.ToString()))
                 {
-                    if (ImGui.Selectable(speed.ToString()))
-                    {
-                        SetFallSpeed((FallSpeeds)speed);
-                    }
+                    SetFallSpeed((FallSpeeds)speed);
                 }
-                ImGui.EndCombo();
             }
-            else
-                _comboFallSpeed = false;
+            ImGui.EndCombo();
+        }
+        else
+            _comboFallSpeed = false;
 
+        if (!IsPracticeMode)
+        {
             // PLAYBACK SPEED DROPDOWN LIST
             ImGui.SetCursorScreenPos(new(ImGui.GetIO().DisplaySize.X - ImGuiUtils.FixedSize(new Vector2(220)).X, CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(155)).Y));
             if (ImGui.BeginCombo("##Playback speed", $"{MidiPlayer.Playback.Speed}x",
@@ -968,11 +1125,11 @@ public class ScreenCanvas
         ImGui.SetCursorScreenPos(new(ImGuiUtils.FixedSize(new Vector2(25)).X, CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(50)).Y));
         if (ImGui.Button(FontAwesome6.ArrowLeftLong, ImGuiUtils.FixedSize(new Vector2(100, 50))) || ImGui.IsKeyPressed(ImGuiKey.Escape, false))
         {
+            MidiPracticeSession.Deactivate();
             MidiPlayer.Playback?.Stop();
             MidiPlayer.Playback?.MoveToStart();
             MidiPlayer.IsTimerRunning = false;
             MidiPlayer.Timer = 0;
-            SetLearningMode(false);
             var route = playMode ? Enums.Windows.Home : Enums.Windows.MidiBrowser;
             WindowsManager.SetWindow(route);
         }
@@ -1004,7 +1161,7 @@ public class ScreenCanvas
 
         _rightHandColorPicker = ImGui.IsPopupOpen("Right Hand Colorpicker");
 
-        if (!playMode)
+        if (!playMode && !IsPracticeMode)
         {
             DrawHandToggleButtons();
         }

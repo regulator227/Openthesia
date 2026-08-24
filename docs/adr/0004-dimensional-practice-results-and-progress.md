@@ -1,0 +1,7 @@
+# Keep Practice Results dimensional and Practice Progress Chart-specific
+
+Openthesia assesses an ended Practice Session with a Practice Result that keeps Completion, Accuracy, and Timing separate instead of producing an opaque combined score. Results establish personal bests and recent trends only within the same Comparable Practice Setup, while assisted and incomplete attempts remain visible history; this keeps feedback explainable and prevents unlike modes, ranges, hands, tempos, or accompaniment choices from competing.
+
+Timing evaluates only note onset within ±90 ms: attacks within ±21.5 ms are Fantastic, earlier matches are Early, later matches are Late, unmatched required notes are Misses, and unmatched Learner attacks are Extras. A sounding note tail does not extend its onset window—a new attack after +90 ms is Extra—but the Practice Session waits for the Chart's final note tail to end before completing. Exact signed offsets remain available so feedback can explain direction without introducing additional weighted tiers, and device calibration revisions keep unlike Timing results separate.
+
+Practice Progress belongs to Learner + Chart, retains bounded recent Practice Results plus personal-best summaries, and never rolls multiple Charts into a Song-wide score. Scoring Policy versions preserve historical meaning rather than silently recomputing or comparing results created under different rules.

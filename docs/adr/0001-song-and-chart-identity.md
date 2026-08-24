@@ -1,0 +1,3 @@
+# Separate Song identity from pattern-addressed Charts
+
+Openthesia gives each Song a stable generated identity and treats it as the parent of one or more Charts. A Chart belongs to one Song and is identified by a versioned SHA-256 fingerprint of its normalized learning pattern—pitch, onset, duration, and tempo—so filenames, paths, copies, descriptive metadata, and MIDI encoding details cannot create collisions or silently transfer learning annotations. Device-local MIDI Source paths are mapped to Charts outside the shared catalog. A known source whose pattern changes creates a new Chart under the same Song; Hand Assignments remain with the original Chart because transferring index-based annotations across changed notes is unsafe.

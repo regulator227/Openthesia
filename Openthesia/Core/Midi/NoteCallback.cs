@@ -12,6 +12,13 @@ public static class NoteCallback
         // If we have any matching notes, check them all
         if (LeftRightData.S_NoteIndexMap.TryGetValue(key, out var indices))
         {
+            if (Openthesia.Core.Practice.PracticePlaybackFilter.IsEnabled)
+            {
+                return Openthesia.Core.Practice.PracticePlaybackFilter.AllowsAll(indices)
+                    ? rawNoteData
+                    : null!;
+            }
+
             foreach (var index in indices)
             {
                 // Mute if the corresponding hand is inactive

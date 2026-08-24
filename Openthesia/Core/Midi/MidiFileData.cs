@@ -7,6 +7,7 @@ public static class MidiFileData
 {
     public static MidiFile MidiFile;
     public static string FileName = "No midi file opened";
+    public static MidiLoadContext? Context;
     public static TempoMap TempoMap;
     public static IEnumerable<Note> Notes;
 
@@ -14,6 +15,8 @@ public static class MidiFileData
     {
         MidiFile = null;
         FileName = "No midi file opened";
+        Context = null;
         TempoMap = null;
+        Notes = null;
     }
 }

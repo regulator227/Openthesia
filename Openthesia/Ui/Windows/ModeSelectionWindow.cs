@@ -1,7 +1,10 @@
 ﻿using IconFonts;
 using ImGuiNET;
+using Melanchall.DryWetMidi.Interaction;
 using Openthesia.Core;
 using Openthesia.Core.Midi;
+using Openthesia.Core.Practice;
+using Openthesia.Core.Songs;
 using Openthesia.Settings;
 using Openthesia.Ui.Helpers;
 using System.Numerics;
@@ -10,6 +13,11 @@ namespace Openthesia.Ui.Windows;
 
 public class ModeSelectionWindow : ImGuiWindow
 {
+    private static PracticePreferences _practicePreferences = PracticePreferences.Default;
+    private static PracticeProgress _practiceProgress = PracticeProgress.Empty;
+    private static (LearnerId LearnerId, ChartId ChartId)? _loadedPreferencesFor;
+    private static string? _practiceWarning;
+
     public ModeSelectionWindow()
     {
         _id = Enums.Windows.ModeSelection.ToString();
@@ -31,14 +39,26 @@ public class ModeSelectionWindow : ImGuiWindow
                 Drawings.RenderMatrixBackground();
 
             RenderTitle(MidiFileData.FileName.Replace(".mid", string.Empty), 50 * FontController.DSF);
+            EnsurePracticePreferencesLoaded();
 
-            RenderIconWithText(FontAwesome6.Music, "Peacefully listen and visualize the piece", 0.1f, 2.5f);
-            RenderIconWithText(FontAwesome6.Gamepad, "Playback will wait for the right note input", 0.36f, 2.5f);
-            RenderIconWithText(FontAwesome6.Hands, "Separate right and left hands with colors", 0.625f, 2.5f);
+            RenderIconWithText(FontAwesome6.Music, "Listen with the selected visualization", 0.1f, 2.5f);
+            RenderIconWithText(FontAwesome6.Gamepad, "Practice with accuracy and timing feedback", 0.36f, 2.5f);
+            RenderIconWithText(FontAwesome6.Hands, "Author left- and right-hand assignments", 0.625f, 2.5f);
 
-            RenderButton("View and listen", "#31CB15", 0.1f, 1.5f, () => SetupMode(false, false));
-            RenderButton("Play along", "#0EA5E9", 0.36f, 1.5f, () => SetupMode(true, false));
-            RenderButton("Edit mode", "#772525", 0.625f, 1.5f, () => SetupMode(false, true));
+            RenderPracticeConfiguration();
+            RenderRecentProgress();
+
+            RenderButton("Performance Visualization", "#31CB15", 0.1f, 1.4f, SetupVisualization);
+            RenderButton(PracticeModeLabel(_practicePreferences.Mode), "#0EA5E9", 0.36f, 1.4f, SetupPractice);
+            RenderButton("Assign Hands", "#772525", 0.625f, 1.4f, SetupHandAssignment);
+
+            if (_practiceWarning is not null)
+            {
+                ImGui.SetCursorPos(new Vector2(
+                    ImGui.GetIO().DisplaySize.X * 0.36f,
+                    ImGui.GetIO().DisplaySize.Y * 0.82f));
+                ImGui.TextWrapped(_practiceWarning);
+            }
 
             ImGui.EndChild();
         }
@@ -101,11 +121,228 @@ public class ModeSelectionWindow : ImGuiWindow
         ImGuiTheme.PopButton();
     }
 
-    private static void SetupMode(bool learningMode, bool editMode)
+    private static void RenderPracticeConfiguration()
     {
-        ScreenCanvasControls.SetLearningMode(learningMode);
-        ScreenCanvasControls.SetEditMode(editMode);
-        
+        var x = ImGui.GetIO().DisplaySize.X * 0.36f;
+        var y = ImGui.GetIO().DisplaySize.Y * 0.50f;
+        ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(250)).X);
+        ImGui.SetCursorPos(new Vector2(x, y));
+        if (ImGui.BeginCombo("##PracticeMode", $"Mode: {PracticeModeLabel(_practicePreferences.Mode)}"))
+        {
+            foreach (var mode in Enum.GetValues<PracticeMode>())
+            {
+                if (ImGui.Selectable(PracticeModeLabel(mode), mode == _practicePreferences.Mode))
+                    _practicePreferences = _practicePreferences with { Mode = mode };
+            }
+            ImGui.EndCombo();
+        }
+
+        ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(250)).X);
+        ImGui.SetCursorPos(new Vector2(x, y + ImGuiUtils.FixedSize(new Vector2(38)).Y));
+        if (ImGui.BeginCombo("##RequiredHands", $"Required Hands: {_practicePreferences.RequiredHands}"))
+        {
+            foreach (var hands in Enum.GetValues<RequiredHands>())
+            {
+                if (ImGui.Selectable(hands.ToString(), hands == _practicePreferences.RequiredHands))
+                    _practicePreferences = _practicePreferences.WithRequiredHands(hands);
+            }
+            ImGui.EndCombo();
+        }
+
+        ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(250)).X);
+        ImGui.SetCursorPos(new Vector2(x, y + ImGuiUtils.FixedSize(new Vector2(76)).Y));
+        ImGui.BeginDisabled(_practicePreferences.RequiredHands == RequiredHands.Both);
+        if (ImGui.BeginCombo("##Accompaniment", $"Accompaniment: {_practicePreferences.Accompaniment}"))
+        {
+            foreach (var accompaniment in Enum.GetValues<Accompaniment>())
+            {
+                if (ImGui.Selectable(
+                    accompaniment.ToString(),
+                    accompaniment == _practicePreferences.Accompaniment))
+                {
+                    _practicePreferences = _practicePreferences with { Accompaniment = accompaniment };
+                }
+            }
+            ImGui.EndCombo();
+        }
+        ImGui.EndDisabled();
+
+        ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(250)).X);
+        ImGui.SetCursorPos(new Vector2(x, y + ImGuiUtils.FixedSize(new Vector2(114)).Y));
+        if (ImGui.BeginCombo("##PracticeTempo", $"Tempo: {_practicePreferences.TempoRatio:0.##}x"))
+        {
+            foreach (var tempoRatio in new[] { 0.25m, 0.5m, 0.75m, 1m, 1.25m, 1.5m, 2m })
+            {
+                if (ImGui.Selectable(
+                    $"{tempoRatio:0.##}x",
+                    tempoRatio == _practicePreferences.TempoRatio))
+                {
+                    _practicePreferences = _practicePreferences with { TempoRatio = tempoRatio };
+                }
+            }
+            ImGui.EndCombo();
+        }
+    }
+
+    private static void RenderRecentProgress()
+    {
+        if (MidiFileData.Context is not { } context || MidiFileData.MidiFile is null)
+            return;
+
+        var currentSetup = new ComparablePracticeSetup(
+            context.ChartId,
+            _practicePreferences.Mode,
+            _practicePreferences.RequiredHands,
+            _practicePreferences.Accompaniment,
+            _practicePreferences.TempoRatio,
+            new PracticeRange(
+                ChartTime.Zero,
+                ChartTime.FromMicroseconds(
+                    MidiFileData.MidiFile.GetDuration<MetricTimeSpan>().TotalMicroseconds)),
+            PracticeAssessment.CurrentScoringPolicyVersion);
+        var latest = _practiceProgress.Results.LastOrDefault(result => result.Setup == currentSetup);
+        if (latest is null)
+        {
+            RenderNonComparableHistory(_practiceProgress.Results.LastOrDefault());
+            return;
+        }
+
+        var progress = _practiceProgress.For(
+            currentSetup,
+            latest.Timing?.CalibrationRevision ?? 0);
+        var timing = latest.Timing is null
+            ? "Timing N/A"
+            : $"Timing {latest.Timing.AverageAbsoluteErrorMicroseconds / 1_000m:0} ms avg";
+        var latestLine = $"Last comparable result · {latest.Outcome} · " +
+                         $"Completion {latest.Completion.Ratio:P1} · " +
+                         $"{latest.Accuracy.RequiredNotesHitRatio:P1} notes hit · " +
+                         $"{latest.Accuracy.ExtraNotes} Extra · {timing}" +
+                         (latest.Assisted ? " · Assisted" : string.Empty);
+        var progressParts = new List<string>();
+        if (progress.BestAccuracy is { } accuracyBest)
+        {
+            progressParts.Add(
+                $"Accuracy PB · {accuracyBest.Result.Accuracy.RequiredNotesHitRatio:P1} notes hit · " +
+                $"{accuracyBest.Result.Accuracy.ExtraNotes} Extra{PersonalBestStatus(latest, accuracyBest)}");
+        }
+        if (progress.BestTiming is { } timingBest)
+        {
+            progressParts.Add(
+                $"Timing PB · {timingBest.Result.Timing!.AverageAbsoluteErrorMicroseconds / 1_000m:0} ms avg" +
+                PersonalBestStatus(latest, timingBest));
+        }
+        if (progress.FirstCompletion is { } firstCompletion)
+            progressParts.Add($"First completion · {firstCompletion.Result.EndedAtUtc.ToLocalTime():d}");
+        progressParts.Add(
+            $"Trend A/E/T · {progress.RecentTrend.Accuracy}/{progress.RecentTrend.Extras}/{progress.RecentTrend.Timing}");
+        ImGui.SetCursorPos(new Vector2(
+            ImGui.GetIO().DisplaySize.X * 0.36f,
+            ImGui.GetIO().DisplaySize.Y * 0.425f));
+        ImGui.TextWrapped($"{latestLine}\n{string.Join(" · ", progressParts)}");
+    }
+
+    private static void RenderNonComparableHistory(PracticeResult? latest)
+    {
+        if (latest is null)
+            return;
+
+        var assisted = latest.Assisted ? " · Assisted" : string.Empty;
+        var summary = $"Recent history (not comparable) · {PracticeModeLabel(latest.Setup.Mode)} · " +
+                      $"{latest.Outcome} · Completion {latest.Completion.Ratio:P1} · " +
+                      $"Accuracy {latest.Accuracy.RequiredNotesHitRatio:P1} · " +
+                      $"{latest.Accuracy.ExtraNotes} Extra{assisted}";
+        ImGui.SetCursorPos(new Vector2(
+            ImGui.GetIO().DisplaySize.X * 0.36f,
+            ImGui.GetIO().DisplaySize.Y * 0.425f));
+        ImGui.TextWrapped(summary);
+    }
+
+    private static string PersonalBestStatus(PracticeResult latest, PracticePersonalBest best)
+    {
+        if (best.LatestMatchedAtUtc != latest.EndedAtUtc)
+            return string.Empty;
+        return best.MatchCount == 1 ? " · achieved" : $" · matched ×{best.MatchCount}";
+    }
+
+    private static void EnsurePracticePreferencesLoaded()
+    {
+        if (ProgramData.ActiveLearner is not { } learner || MidiFileData.Context is not { } context)
+            return;
+
+        var key = (learner.Id, context.ChartId);
+        if (_loadedPreferencesFor == key)
+        {
+            if (MidiPracticeSession.LatestProgress is { } latestProgress)
+                _practiceProgress = latestProgress;
+            _practiceWarning = MidiPracticeSession.ProgressWarning ?? _practiceWarning;
+            return;
+        }
+
+        var loaded = new PracticePreferencesStore(ProgramData.DataPath).Load(learner.Id, context.ChartId);
+        var progress = new PracticeProgressStore(ProgramData.DataPath).Load(learner.Id, context.ChartId);
+        _practicePreferences = loaded.Preferences;
+        _practiceProgress = progress.Progress;
+        _practiceWarning = loaded.Warning ?? progress.Warning;
+        _loadedPreferencesFor = key;
+    }
+
+    private static void SetupVisualization()
+    {
+        MidiPracticeSession.Deactivate();
+        ScreenCanvasControls.SetEditMode(false);
+        ScreenCanvasControls.LeftHandActive = true;
+        ScreenCanvasControls.RightHandActive = true;
+        PrepareHandAssignments();
+        WindowsManager.SetWindow(Enums.Windows.MidiPlayback);
+    }
+
+    private static void SetupPractice()
+    {
+        if (ProgramData.ActiveLearner is not { } learner || MidiFileData.Context is not { } context)
+        {
+            _practiceWarning = "Learner and Chart identity are required to start Practice.";
+            return;
+        }
+
+        MidiPracticeSession.Deactivate();
+        ScreenCanvasControls.SetEditMode(false);
+        PrepareHandAssignments();
+        var saved = new PracticePreferencesStore(ProgramData.DataPath).Save(
+            learner.Id,
+            context.ChartId,
+            _practicePreferences);
+        if (!saved.Saved)
+        {
+            _practiceWarning = saved.Warning;
+            return;
+        }
+
+        _practiceWarning = MidiPracticeSession.Start(_practicePreferences);
+        if (_practiceWarning is null)
+            WindowsManager.SetWindow(Enums.Windows.MidiPlayback);
+    }
+
+    private static string PracticeModeLabel(PracticeMode mode)
+    {
+        return mode switch
+        {
+            PracticeMode.WaitForNotes => "Wait for Notes",
+            PracticeMode.PlayInTime => "Play in Time",
+            PracticeMode.Recital => "Recital",
+            _ => mode.ToString()
+        };
+    }
+
+    private static void SetupHandAssignment()
+    {
+        MidiPracticeSession.Deactivate();
+        ScreenCanvasControls.SetEditMode(true);
+        PrepareHandAssignments();
+        WindowsManager.SetWindow(Enums.Windows.MidiPlayback);
+    }
+
+    private static void PrepareHandAssignments()
+    {
         LeftRightData.S_IsRightNote.Clear();
         foreach (var note in MidiFileData.Notes)
         {
@@ -130,8 +367,6 @@ public class ModeSelectionWindow : ImGuiWindow
 
             indexList.Add(i);
         }
-
-        WindowsManager.SetWindow(Enums.Windows.MidiPlayback);
     }
 
 
