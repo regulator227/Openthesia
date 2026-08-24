@@ -37,6 +37,23 @@ The set of unique pitches from the Required Hands that share one normalized Char
 An ordered fact emitted during a Practice Session about lifecycle, Learner input, Practice Targets, or assistance. It records what happened without assigning a score or updating Practice Progress itself.
 _Avoid_: Score event, analytics event
 
+**Practice Result**:
+The completed assessment of one ended Practice Session, keeping Completion, Accuracy, and Timing separate and identifying whether the attempt is eligible for Practice Progress.
+_Avoid_: Score, grade, rating
+
+**Comparable Practice Setup**:
+The Chart, Practice Mode, Required Hands, range, tempo, Accompaniment, and Scoring Policy under which eligible Practice Results may establish personal bests or recent trends.
+
+**Timing Judgment**:
+A learner-facing classification of a required note opportunity or Learner attack as Fantastic, Early, Late, Miss, or Extra.
+
+**Scoring Policy**:
+The versioned rules that translate Practice Events into Practice Results so outcomes created under different rules are never silently compared.
+
+**Personal Best**:
+The strongest eligible Accuracy or Timing outcome achieved by a Learner within one Comparable Practice Setup.
+_Avoid_: High score, leaderboard position
+
 **Song**:
 A musical work available for learning. A Song has a stable identity and one or more Charts.
 _Avoid_: MIDI file, track
@@ -79,7 +96,7 @@ A learner's locally managed collection of Songs, including their descriptive met
 _Avoid_: Folder browser, song store
 
 **Practice Progress**:
-The durable record of how a Learner's fluency with a Song changes across Practice Sessions.
+The durable record of how one Learner's fluency with one Chart changes across eligible Practice Results. Song-level summaries are derived from Chart-specific Practice Progress.
 _Avoid_: High score, account statistics
 
 **Performance Visualization**:

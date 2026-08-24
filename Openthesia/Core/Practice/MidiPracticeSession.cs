@@ -11,7 +11,14 @@ public static class MidiPracticeSession
     private static PracticeSession? _session;
     private static PracticeChart? _chart;
     private static PracticeSessionPlan? _plan;
+    private static PracticeAssessment? _assessment;
+    private static LearnerId? _learnerId;
     private static Stopwatch? _signalClock;
+    private static IReadOnlyList<PracticeFeedback> _latestFeedback = Array.Empty<PracticeFeedback>();
+    private static DateTimeOffset _feedbackExpiresAtUtc;
+    private static PracticeResult? _latestResult;
+    private static PracticeProgress? _latestProgress;
+    private static string? _progressWarning;
 
     public static bool IsActive
     {
@@ -31,11 +38,58 @@ public static class MidiPracticeSession
         }
     }
 
+    public static PracticeMode? Mode
+    {
+        get
+        {
+            lock (Sync)
+                return _plan?.Mode;
+        }
+    }
+
+    public static IReadOnlyList<PracticeFeedback> LatestFeedback
+    {
+        get
+        {
+            lock (Sync)
+                return DateTimeOffset.UtcNow <= _feedbackExpiresAtUtc
+                    ? _latestFeedback
+                    : Array.Empty<PracticeFeedback>();
+        }
+    }
+
+    public static PracticeResult? LatestResult
+    {
+        get
+        {
+            lock (Sync)
+                return _latestResult;
+        }
+    }
+
+    public static PracticeProgress? LatestProgress
+    {
+        get
+        {
+            lock (Sync)
+                return _latestProgress;
+        }
+    }
+
+    public static string? ProgressWarning
+    {
+        get
+        {
+            lock (Sync)
+                return _progressWarning;
+        }
+    }
+
     public static string? Start(PracticePreferences preferences)
     {
         ArgumentNullException.ThrowIfNull(preferences);
-        if (preferences.Mode != PracticeMode.WaitForNotes)
-            return "This Practice Mode is not available yet.";
+        if (ProgramData.ActiveLearner is not { } learner)
+            return "Choose a Learner before starting Practice.";
         if (MidiFileData.Context is not { } context || MidiFileData.MidiFile is null)
             return "Open a Chart from a MIDI Source before starting Practice.";
         if (LeftRightData.S_IsRightNote.Count != MidiFileData.Notes.Count())
@@ -54,6 +108,7 @@ public static class MidiPracticeSession
         lock (Sync)
         {
             DeactivateCore(abandon: true);
+            _learnerId = learner.Id;
             return StartCore(chart, plan);
         }
     }
@@ -160,7 +215,16 @@ public static class MidiPracticeSession
         _chart = chart;
         _plan = plan;
         _session = started.Session;
+        _assessment = PracticeAssessment.Start(
+            chart,
+            plan,
+            TimingCalibration.Uncalibrated,
+            DateTimeOffset.UtcNow);
         _signalClock = Stopwatch.StartNew();
+        _latestFeedback = Array.Empty<PracticeFeedback>();
+        _latestResult = null;
+        _latestProgress = null;
+        _progressWarning = null;
         MovePlaybackTo(chartTime: plan.Range?.Start ?? ChartTime.Zero);
         Apply(_session.Handle(new PracticeSignal.Begin(SessionTime.Zero)));
         return null;
@@ -174,6 +238,7 @@ public static class MidiPracticeSession
         _session = null;
         _chart = null;
         _plan = null;
+        _assessment = null;
         _signalClock = null;
         PracticePlaybackFilter.Disable();
     }
@@ -182,6 +247,27 @@ public static class MidiPracticeSession
     {
         if (transition.Error is not null)
             return;
+
+        var assessed = _assessment?.Apply(transition, DateTimeOffset.UtcNow);
+        if (assessed is not null)
+        {
+            if (assessed.Feedback.Count > 0)
+            {
+                _latestFeedback = assessed.Feedback;
+                _feedbackExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(1.5);
+            }
+
+            if (assessed.Result is { } result)
+            {
+                _latestResult = result;
+                if (_learnerId is { } learnerId)
+                {
+                    var recorded = new PracticeProgressStore(ProgramData.DataPath).Record(learnerId, result);
+                    _latestProgress = recorded.Progress;
+                    _progressWarning = recorded.Warning;
+                }
+            }
+        }
 
         foreach (var effect in transition.Effects)
         {

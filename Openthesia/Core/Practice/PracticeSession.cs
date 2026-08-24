@@ -232,6 +232,7 @@ public sealed class PracticeSession
 {
     private readonly PracticeSessionPlan _plan;
     private readonly PracticeRange _range;
+    private readonly ChartTime _playbackEnd;
     private readonly IReadOnlyList<PracticeTarget> _targets;
     private readonly IReadOnlyList<int> _audibleChartNoteIds;
     private PracticeSessionSnapshot _snapshot;
@@ -241,11 +242,13 @@ public sealed class PracticeSession
     private PracticeSession(
         PracticeSessionPlan plan,
         PracticeRange range,
+        ChartTime playbackEnd,
         IReadOnlyList<PracticeTarget> targets,
         IReadOnlyList<int> audibleChartNoteIds)
     {
         _plan = plan;
         _range = range;
+        _playbackEnd = playbackEnd;
         _targets = targets;
         _audibleChartNoteIds = audibleChartNoteIds;
         _snapshot = new PracticeSessionSnapshot(
@@ -295,9 +298,18 @@ public sealed class PracticeSession
                 .Select(note => note.Id)
                 .ToArray()
             : Array.Empty<int>();
+        var finalIncludedTail = chart.Notes
+            .Where(note => note.Onset.CompareTo(range.Start) >= 0 && note.Onset.CompareTo(range.End) < 0)
+            .Select(note => note.Onset.Microseconds + note.Duration.Microseconds)
+            .DefaultIfEmpty(range.End.Microseconds)
+            .Max();
+        var playbackEnd = ChartTime.FromMicroseconds(
+            Math.Min(
+                chart.Duration.Microseconds,
+                Math.Max(range.End.Microseconds, finalIncludedTail)));
 
         return new PracticeSessionStartResult(
-            new PracticeSession(plan, range, targets, audibleChartNoteIds),
+            new PracticeSession(plan, range, playbackEnd, targets, audibleChartNoteIds),
             Error: null);
     }
 
@@ -392,7 +404,7 @@ public sealed class PracticeSession
         var elapsedMicroseconds = at.Microseconds - _lastSignalTime.Microseconds;
         var chartMicroseconds = (long)(elapsedMicroseconds * _plan.TempoRatio);
         var destination = ChartTime.FromMicroseconds(
-            Math.Min(_snapshot.Position.Microseconds + chartMicroseconds, _range.End.Microseconds));
+            Math.Min(_snapshot.Position.Microseconds + chartMicroseconds, _playbackEnd.Microseconds));
         var target = _plan.Mode == PracticeMode.WaitForNotes
             ? NextTarget is { } nextTarget && nextTarget.Onset.CompareTo(destination) <= 0
                 ? nextTarget
@@ -412,7 +424,7 @@ public sealed class PracticeSession
         }
         else
         {
-            var completed = destination == _range.End;
+            var completed = destination == _playbackEnd;
             _snapshot = _snapshot with
             {
                 State = completed
@@ -511,7 +523,7 @@ public sealed class PracticeSession
         var target = NextTarget is { } nextTarget && nextTarget.Onset == position
             ? nextTarget
             : null;
-        var state = position == _range.End
+        var state = position == _playbackEnd
             ? PracticeSessionState.Completed
             : runningIntent
                 ? _plan.Mode == PracticeMode.WaitForNotes && target is not null

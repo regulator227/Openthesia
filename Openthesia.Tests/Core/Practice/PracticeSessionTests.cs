@@ -7,6 +7,41 @@ namespace Openthesia.Tests.Core.Practice;
 public sealed class PracticeSessionTests
 {
     [Fact]
+    public void SelectedRangeWaitsForTheLastIncludedNoteTailBeforeCompleting()
+    {
+        var chart = new PracticeChart(
+            ChartId.FromHash(new byte[32]),
+            ChartTime.FromMicroseconds(600_000),
+            new[]
+            {
+                new PracticeChartNote(
+                    0,
+                    60,
+                    ChartTime.FromMicroseconds(100_000),
+                    ChartTime.FromMicroseconds(500_000),
+                    PianoHand.Right)
+            });
+        var plan = new PracticeSessionPlan(
+            PracticeMode.PlayInTime,
+            RequiredHands.Both,
+            Accompaniment.Silent,
+            TempoRatio: 1m,
+            new PracticeRange(ChartTime.Zero, ChartTime.FromMicroseconds(200_000)));
+        var session = PracticeSession.TryStart(chart, plan).Session!;
+        session.Handle(new PracticeSignal.Begin(SessionTime.Zero));
+
+        var atRangeEnd = session.Handle(
+            new PracticeSignal.Pulse(SessionTime.FromMicroseconds(200_000)));
+        var atTailEnd = session.Handle(
+            new PracticeSignal.Pulse(SessionTime.FromMicroseconds(600_000)));
+
+        Assert.Equal(PracticeSessionState.Running, atRangeEnd.Snapshot.State);
+        Assert.Equal(ChartTime.FromMicroseconds(200_000), atRangeEnd.Snapshot.Position);
+        Assert.Equal(PracticeSessionState.Completed, atTailEnd.Snapshot.State);
+        Assert.Equal(ChartTime.FromMicroseconds(600_000), atTailEnd.Snapshot.Position);
+    }
+
+    [Fact]
     public void WaitForNotesStartsAtATimeZeroTarget()
     {
         var chart = new PracticeChart(

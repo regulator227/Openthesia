@@ -475,6 +475,7 @@ public class ScreenCanvas
             index++;
         }
         DrawPracticeTarget();
+        DrawPracticeFeedback();
     }
 
     private static void DrawPracticeTarget()
@@ -485,26 +486,55 @@ public class ScreenCanvas
 
         foreach (var pitch in target.Pitches)
         {
-            var noteNumber = (SevenBitNumber)pitch;
-            Vector2 center;
-            if (PianoRenderer.BlackNoteToKey.TryGetValue(noteNumber, out var blackKey))
-            {
-                center = new Vector2(
-                    PianoRenderer.P.X + blackKey * PianoRenderer.Width + PianoRenderer.Width * 0.75f + 10,
-                    PianoRenderer.P.Y + PianoRenderer.Height / 1.7f);
-            }
-            else
-            {
-                center = new Vector2(
-                    PianoRenderer.P.X + PianoRenderer.WhiteNoteToKey.GetValueOrDefault(noteNumber, 0) * PianoRenderer.Width + PianoRenderer.Width / 2,
-                    PianoRenderer.P.Y + PianoRenderer.Height / 1.2f);
-            }
-
             ImGui.GetForegroundDrawList().AddCircleFilled(
-                center,
+                PracticePitchCenter(pitch),
                 7,
                 ImGui.GetColorU32(ThemeManager.RightHandCol));
         }
+    }
+
+    private static void DrawPracticeFeedback()
+    {
+        foreach (var pitchFeedback in MidiPracticeSession.LatestFeedback.GroupBy(item => item.Pitch))
+        {
+            var row = 0;
+            foreach (var feedback in pitchFeedback)
+            {
+                var label = feedback.Judgment switch
+                {
+                    TimingJudgment.Fantastic => "Fantastic",
+                    TimingJudgment.Early => $"Early {Math.Abs(feedback.SignedOffsetMicroseconds ?? 0) / 1_000m:0} ms",
+                    TimingJudgment.Late => $"Late {Math.Abs(feedback.SignedOffsetMicroseconds ?? 0) / 1_000m:0} ms",
+                    TimingJudgment.Miss => "Miss",
+                    TimingJudgment.Extra => "Extra",
+                    _ => feedback.Judgment.ToString()
+                };
+                var center = PracticePitchCenter(feedback.Pitch);
+                var position = new Vector2(
+                    center.X - ImGui.CalcTextSize(label).X / 2,
+                    center.Y - ImGuiUtils.FixedSize(new Vector2(32 + row * 18)).Y);
+                var color = feedback.Judgment switch
+                {
+                    TimingJudgment.Fantastic => new Vector4(0.20f, 0.85f, 0.35f, 1),
+                    TimingJudgment.Early or TimingJudgment.Late => new Vector4(1f, 0.72f, 0.15f, 1),
+                    _ => new Vector4(0.95f, 0.25f, 0.25f, 1)
+                };
+                ImGui.GetForegroundDrawList().AddText(position, ImGui.GetColorU32(color), label);
+                row++;
+            }
+        }
+    }
+
+    private static Vector2 PracticePitchCenter(byte pitch)
+    {
+        var noteNumber = (SevenBitNumber)pitch;
+        return PianoRenderer.BlackNoteToKey.TryGetValue(noteNumber, out var blackKey)
+            ? new Vector2(
+                PianoRenderer.P.X + blackKey * PianoRenderer.Width + PianoRenderer.Width * 0.75f + 10,
+                PianoRenderer.P.Y + PianoRenderer.Height / 1.7f)
+            : new Vector2(
+                PianoRenderer.P.X + PianoRenderer.WhiteNoteToKey.GetValueOrDefault(noteNumber, 0) * PianoRenderer.Width + PianoRenderer.Width / 2,
+                PianoRenderer.P.Y + PianoRenderer.Height / 1.2f);
     }
 
     private static void GetPlaybackInputs()
@@ -700,18 +730,93 @@ public class ScreenCanvas
         if (MidiPracticeSession.Snapshot is not { } snapshot)
             return;
 
+        var mode = MidiPracticeSession.Mode switch
+        {
+            PracticeMode.WaitForNotes => "Wait for Notes",
+            PracticeMode.PlayInTime => "Play in Time",
+            PracticeMode.Recital => "Recital",
+            _ => "Practice"
+        };
         var status = snapshot.State switch
         {
-            PracticeSessionState.Running => "Wait for Notes · Playing",
-            PracticeSessionState.WaitingForInput => "Wait for Notes · Play the highlighted target",
-            PracticeSessionState.LearnerPaused => "Wait for Notes · Paused",
-            PracticeSessionState.Completed => "Wait for Notes · Completed",
-            _ => $"Wait for Notes · {snapshot.State}"
+            PracticeSessionState.Running => $"{mode} · Playing",
+            PracticeSessionState.WaitingForInput => $"{mode} · Play the highlighted target",
+            PracticeSessionState.LearnerPaused => $"{mode} · Paused",
+            PracticeSessionState.Completed => $"{mode} · Completed",
+            _ => $"{mode} · {snapshot.State}"
         };
         ImGui.SetCursorScreenPos(new Vector2(
             (ImGui.GetIO().DisplaySize.X - ImGui.CalcTextSize(status).X) / 2,
             CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(18)).Y));
         ImGui.Text(status);
+
+        if (MidiPracticeSession.LatestResult is { } result)
+        {
+            var timing = result.Timing is null
+                ? "Timing N/A"
+                : $"Timing {result.Timing.AverageAbsoluteErrorMicroseconds / 1_000m:0} ms avg";
+            var assisted = result.Assisted ? " · Assisted" : string.Empty;
+            var summary = $"Completion {result.Completion.Ratio:P1} · " +
+                          $"Accuracy {result.Accuracy.RequiredNotesHitRatio:P1} · " +
+                          $"{result.Accuracy.ExtraNotes} Extra · {timing}{assisted}";
+            ImGui.SetCursorScreenPos(new Vector2(
+                (ImGui.GetIO().DisplaySize.X - ImGui.CalcTextSize(summary).X) / 2,
+                CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(42)).Y));
+            ImGui.Text(summary);
+
+            if (MidiPracticeSession.LatestProgress is { } practiceProgress)
+            {
+                var progress = practiceProgress.For(
+                    result.Setup,
+                    result.Timing?.CalibrationRevision ?? 0);
+                var progressSummary = PracticeProgressSummary(result, progress);
+                ImGui.SetCursorScreenPos(new Vector2(
+                    (ImGui.GetIO().DisplaySize.X - ImGui.CalcTextSize(progressSummary).X) / 2,
+                    CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(66)).Y));
+                ImGui.Text(progressSummary);
+            }
+        }
+
+        if (MidiPracticeSession.ProgressWarning is { } warning)
+        {
+            ImGui.SetCursorScreenPos(new Vector2(
+                (ImGui.GetIO().DisplaySize.X - ImGui.CalcTextSize(warning).X) / 2,
+                CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(90)).Y));
+            ImGui.Text(warning);
+        }
+    }
+
+    private static string PracticeProgressSummary(
+        PracticeResult result,
+        PracticeProgressSnapshot progress)
+    {
+        var parts = new List<string>();
+        if (progress.BestAccuracy is { } accuracyBest)
+        {
+            parts.Add(
+                $"Accuracy PB {accuracyBest.Result.Accuracy.RequiredNotesHitRatio:P1}/" +
+                $"{accuracyBest.Result.Accuracy.ExtraNotes} Extra" +
+                PersonalBestStatus(result, accuracyBest));
+        }
+        if (progress.BestTiming is { } timingBest)
+        {
+            parts.Add(
+                $"Timing PB {timingBest.Result.Timing!.AverageAbsoluteErrorMicroseconds / 1_000m:0} ms" +
+                PersonalBestStatus(result, timingBest));
+        }
+        if (progress.FirstCompletion is { } firstCompletion)
+            parts.Add($"First completion {firstCompletion.Result.EndedAtUtc.ToLocalTime():d}");
+        parts.Add(
+            $"Trend A/E/T {progress.RecentTrend.Accuracy}/" +
+            $"{progress.RecentTrend.Extras}/{progress.RecentTrend.Timing}");
+        return string.Join(" · ", parts);
+    }
+
+    private static string PersonalBestStatus(PracticeResult result, PracticePersonalBest best)
+    {
+        if (best.LatestMatchedAtUtc != result.EndedAtUtc)
+            return string.Empty;
+        return best.MatchCount == 1 ? " achieved" : $" matched ×{best.MatchCount}";
     }
 
     private static void DrawProgressBar()
