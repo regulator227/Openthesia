@@ -18,6 +18,8 @@ public enum PracticeNavigationDirection
 
 public sealed class PracticeNavigation : IEquatable<PracticeNavigation>
 {
+    private readonly PracticeBookmark[] _sortedBookmarks;
+
     public static PracticeNavigation Empty { get; } = new(
         Array.Empty<PracticeLoop>(),
         Array.Empty<PracticeBookmark>());
@@ -30,6 +32,10 @@ public sealed class PracticeNavigation : IEquatable<PracticeNavigation>
         ArgumentNullException.ThrowIfNull(bookmarks);
         Loops = loops.ToArray();
         Bookmarks = bookmarks.ToArray();
+        _sortedBookmarks = Bookmarks
+            .OrderBy(bookmark => bookmark.Position)
+            .ThenBy(bookmark => bookmark.Id)
+            .ToArray();
     }
 
     public IReadOnlyList<PracticeLoop> Loops { get; }
@@ -82,13 +88,12 @@ public sealed class PracticeNavigation : IEquatable<PracticeNavigation>
         if (Bookmarks.Count == 0)
             return null;
 
-        var sorted = Bookmarks
-            .OrderBy(bookmark => bookmark.Position)
-            .ThenBy(bookmark => bookmark.Id)
-            .ToArray();
-        return direction == PracticeNavigationDirection.Next
-            ? sorted.FirstOrDefault(bookmark => bookmark.Position.CompareTo(playhead) > 0) ?? sorted[0]
-            : sorted.LastOrDefault(bookmark => bookmark.Position.CompareTo(playhead) < 0) ?? sorted[^1];
+        var boundary = UpperBound(playhead);
+        if (direction == PracticeNavigationDirection.Next)
+            return boundary < _sortedBookmarks.Length ? _sortedBookmarks[boundary] : _sortedBookmarks[0];
+
+        var previous = LowerBound(playhead) - 1;
+        return previous >= 0 ? _sortedBookmarks[previous] : _sortedBookmarks[^1];
     }
 
     public bool IsValid(ChartTime chartDuration)
@@ -147,6 +152,36 @@ public sealed class PracticeNavigation : IEquatable<PracticeNavigation>
         if (!replaced)
             result.Add(replacement);
         return result;
+    }
+
+    private int LowerBound(ChartTime position)
+    {
+        var low = 0;
+        var high = _sortedBookmarks.Length;
+        while (low < high)
+        {
+            var middle = low + (high - low) / 2;
+            if (_sortedBookmarks[middle].Position.CompareTo(position) < 0)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+        return low;
+    }
+
+    private int UpperBound(ChartTime position)
+    {
+        var low = 0;
+        var high = _sortedBookmarks.Length;
+        while (low < high)
+        {
+            var middle = low + (high - low) / 2;
+            if (_sortedBookmarks[middle].Position.CompareTo(position) <= 0)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+        return low;
     }
 
     private static string NormalizeName(string? value, string fallback)

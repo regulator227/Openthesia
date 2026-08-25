@@ -1,0 +1,3 @@
+# Limit Lighted Keyboard Guidance to standard MIDI targets
+
+Lighted Keyboard Guidance is an opt-in Device Setting that sends standard MIDI Note On and Note Off messages for the next Required Hands Practice Target on one learner-selected channel during Wait for Notes and Play in Time, clears stale targets on configuration, device, session, and application lifecycle changes, and remains off in Recital. Openthesia guarantees only this message boundary: learners must align their keyboard's light or navigate channel and guide-sound behavior, while vendor SysEx, model profiles, colors, flashing, fingering, and blanket hardware compatibility remain outside the product boundary.

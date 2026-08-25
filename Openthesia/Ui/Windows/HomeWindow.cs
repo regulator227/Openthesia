@@ -29,20 +29,26 @@ public class HomeWindow : ImGuiWindow
 
     private void DrawTitle()
     {
-        if (_io.DisplaySize.Y < 1079)
-            return; // don't render on screen size lower than 1079 px
-
-        float alpha = 0.5f * (1.0f + MathF.Sin(2.0f * MathF.PI * _timer));
+        float alpha = AccessibilityRuntime.Presentation.AllowDecorativeMotion &&
+                      AccessibilityRuntime.Presentation.AllowTransparency
+            ? 0.5f * (1.0f + MathF.Sin(2.0f * MathF.PI * _timer))
+            : 1f;
         if (_timer >= 1f)
             _timer -= 1f;
 
         using (AutoFont titleFont = new(FontController.Title))
         {
             var textPos = new Vector2(ImGui.GetIO().DisplaySize.X / 2 - ImGui.CalcTextSize(_title).X / 2, ImGui.GetIO().DisplaySize.Y / 10);
-            ImGui.SetCursorPos(textPos + _titleShadowOffset);
-            ImGui.GetWindowDrawList().AddText(textPos + _titleShadowOffset, _titleShadowColor, _title);
+            if (AccessibilityRuntime.Presentation.AllowTransparency)
+            {
+                ImGui.SetCursorPos(textPos + _titleShadowOffset);
+                ImGui.GetWindowDrawList().AddText(textPos + _titleShadowOffset, _titleShadowColor, _title);
+            }
             ImGui.SetCursorPos(textPos);
-            ImGui.TextColored(new Vector4(1, 1, 1, alpha), _title);
+            var titleColor = AccessibilityRuntime.Presentation.UseSystemContrast
+                ? AccessibilityRuntime.ContrastPalette.WindowText
+                : new Vector4(1, 1, 1, alpha);
+            ImGui.TextColored(titleColor, _title);
         }
     }
 
@@ -86,9 +92,24 @@ public class HomeWindow : ImGuiWindow
 
     private void RenderButtonsContainer()
     {
-        ImGui.SetNextWindowPos(ImGui.GetIO().DisplaySize / 2 - ImGuiUtils.FixedSize(new Vector2(150, 0)));
-        if (ImGui.BeginChild("Buttons container", ImGuiUtils.FixedSize(new Vector2(400, 300))))
+        var display = ImGui.GetIO().DisplaySize;
+        var margin = Math.Max(8f, Math.Min(ImGuiUtils.FixedSize(new Vector2(24)).X, display.X * 0.04f));
+        var showBranding = display.Y >= ImGuiUtils.FixedSize(new Vector2(700)).Y;
+        var top = showBranding ? display.Y / 2 : margin;
+        var width = Math.Min(
+            ImGuiUtils.FixedSize(new Vector2(400)).X,
+            Math.Max(200f, display.X - margin * 2));
+        var height = Math.Max(160f, display.Y - top - margin);
+        ImGui.SetCursorScreenPos(new Vector2((display.X - width) / 2, top));
+        if (ImGui.BeginChild(
+                "Buttons container",
+                new Vector2(width, height),
+                ImGuiChildFlags.AlwaysUseWindowPadding,
+                ImGuiWindowFlags.AlwaysVerticalScrollbar))
         {
+            _buttonsSize = new Vector2(
+                Math.Max(100f, ImGui.GetContentRegionAvail().X),
+                ImGuiUtils.FixedSize(new Vector2(50)).Y);
             DrawButton("PLAY MIDI FILE", ("#31CB15", "#20870E", "#31CB15"), ref _isPlayMidiHovered, () =>
             {
                 WindowsManager.SetWindow(Enums.Windows.MidiBrowser);
@@ -114,20 +135,22 @@ public class HomeWindow : ImGuiWindow
             {
                 Application.AppInstance.Quit();
             });
-
-            ImGui.EndChild();
         }
+        ImGui.EndChild();
     }
 
     protected override void OnImGui()
     {
         using (AutoFont font22 = new(FontController.GetFontOfSize(22)))
         {
-            if (CoreSettings.AnimatedBackground)
+            if (CoreSettings.AnimatedBackground && AccessibilityRuntime.Presentation.AllowDecorativeMotion)
                 Drawings.RenderMatrixBackground();
 
-            DrawTitle();
-            DrawLogo();
+            if (_io.DisplaySize.Y >= ImGuiUtils.FixedSize(new Vector2(700)).Y)
+            {
+                DrawTitle();
+                DrawLogo();
+            }
             RenderButtonsContainer();
         }
     }

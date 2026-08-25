@@ -324,6 +324,12 @@ public sealed class PracticeSession
 
     public PracticeSessionSnapshot Snapshot => _snapshot;
 
+    public PracticeTarget? AccessibilityTarget =>
+        _snapshot.Target ??
+        (_plan.Mode == PracticeMode.WaitForNotes
+            ? NextTarget
+            : TargetAtOrAfter(_snapshot.Position));
+
     public static PracticeSessionStartResult TryStart(
         PracticeChart chart,
         PracticeSessionPlan plan)
@@ -887,6 +893,21 @@ public sealed class PracticeSession
 
     private PracticeTarget? NextTarget =>
         _targetIndex < _targets.Count ? _targets[_targetIndex] : null;
+
+    private PracticeTarget? TargetAtOrAfter(ChartTime position)
+    {
+        var low = 0;
+        var high = _targets.Count;
+        while (low < high)
+        {
+            var middle = low + (high - low) / 2;
+            if (_targets[middle].Onset.CompareTo(position) < 0)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+        return low < _targets.Count ? _targets[low] : null;
+    }
 
     private bool CanHandle(PracticeSignal signal)
     {

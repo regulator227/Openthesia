@@ -14,6 +14,7 @@ using Openthesia.Ui.Helpers;
 using Openthesia.Core;
 using Openthesia.Core.FileDialogs;
 using Openthesia.Core.Midi;
+using Openthesia.Core.Practice;
 using Openthesia.Core.SoundFonts;
 using Openthesia.Enums;
 using Openthesia.Settings;
@@ -35,31 +36,45 @@ public class SettingsWindow : ImGuiWindow
         ImGui.BeginChild("Settings", ImGui.GetContentRegionAvail(), ImGuiChildFlags.None, ImGuiWindowFlags.NoScrollWithMouse | ImGuiWindowFlags.NoScrollbar);
         ImGui.PushFont(FontController.GetFontOfSize(22));
 
-        if (AnimatedBackground)
+        if (AnimatedBackground && AccessibilityRuntime.Presentation.AllowDecorativeMotion)
         {
             Drawings.RenderMatrixBackground();
         }
 
+        var display = ImGui.GetIO().DisplaySize;
+        var margin = Math.Max(8f, Math.Min(ImGuiUtils.FixedSize(new Vector2(22)).X, display.X * 0.04f));
+        var buttonHeight = ImGuiUtils.FixedSize(new Vector2(50)).Y;
         ImGui.PushFont(FontController.Font16_Icon16);
-        ImGui.SetCursorScreenPos(new(22, 50));
-        if (ImGui.Button(FontAwesome6.ArrowLeftLong, ImGuiUtils.FixedSize(new Vector2(100, 50))))
+        ImGui.SetCursorScreenPos(new Vector2(margin, Math.Min(buttonHeight, display.Y * 0.08f)));
+        if (ImGui.Button($"{FontAwesome6.ArrowLeftLong} Back", ImGuiUtils.FixedSize(new Vector2(120, 50))) ||
+            (!ImGui.GetIO().WantTextInput &&
+             !ImGui.IsPopupOpen(string.Empty, ImGuiPopupFlags.AnyPopupId) &&
+             ImGui.IsKeyPressed(ImGuiKey.Escape, false)))
         {
             WindowsManager.SetWindow(Enums.Windows.Home);
         }
         ImGui.PopFont();
 
         ImGui.PushFont(FontController.Title);
-        var textPos = new Vector2(ImGui.GetIO().DisplaySize.X / 2 - ImGui.CalcTextSize("SETTINGS").X / 2, ImGui.GetIO().DisplaySize.Y / 20);
+        var textPos = new Vector2(display.X / 2 - ImGui.CalcTextSize("SETTINGS").X / 2, display.Y / 20);
         ImGui.SetCursorPos(textPos);
         ImGui.Text("SETTINGS");
         ImGui.PopFont();
 
         ImGuiTheme.Style.FramePadding = ImGuiUtils.FixedSize(new Vector2(15));
         ImGuiTheme.PushButton(ImGuiTheme.HtmlToVec4("#0284C7"), ImGuiTheme.HtmlToVec4("#0284C7"), ImGuiTheme.HtmlToVec4("#0284C7"));
-        ImGuiTheme.Style.WindowPadding = new(10);
+        ImGuiTheme.Style.WindowPadding = ImGuiUtils.FixedSize(new Vector2(10));
 
-        ImGui.SetNextWindowPos(ImGui.GetIO().DisplaySize / 2 - new Vector2(ImGui.GetIO().DisplaySize.X / 1.5f, ImGui.GetIO().DisplaySize.Y / 1.4f) / 2);
-        ImGui.BeginChild("Settings controls", new(ImGui.GetIO().DisplaySize.X / 1.5f, ImGui.GetIO().DisplaySize.Y / 1.2f), ImGuiChildFlags.AlwaysUseWindowPadding);
+        var controlsTop = Math.Min(ImGuiUtils.FixedSize(new Vector2(135)).Y, display.Y * 0.22f);
+        var controlsSize = new Vector2(
+            Math.Max(200f, display.X - margin * 2),
+            Math.Max(200f, display.Y - controlsTop - margin));
+        ImGui.SetCursorScreenPos(new Vector2(margin, controlsTop));
+        ImGui.BeginChild(
+            "Settings controls",
+            controlsSize,
+            ImGuiChildFlags.AlwaysUseWindowPadding,
+            ImGuiWindowFlags.HorizontalScrollbar);
 
         // MIDI DEVICES
         ImGui.Text($"MIDI DEVICES {FontAwesome6.Keyboard}");
@@ -112,6 +127,33 @@ public class SettingsWindow : ImGuiWindow
 
         if (OutputDevice.GetDevicesCount() <= 0)
             ImGui.EndDisabled();
+
+        ImGui.Dummy(new(10));
+
+        var lightedKeyboard = CoreSettings.LightedKeyboard;
+        var lightedKeyboardEnabled = lightedKeyboard.Enabled;
+        if (ImGui.Checkbox("Light upcoming Practice notes", ref lightedKeyboardEnabled))
+        {
+            CoreSettings.SetLightedKeyboardSettings(
+                lightedKeyboardEnabled,
+                lightedKeyboard.MidiChannel);
+            MidiPracticeSession.RefreshLightedKeyboardGuidance();
+        }
+
+        var lightedKeyboardChannel = CoreSettings.LightedKeyboard.MidiChannel;
+        ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(180)).X);
+        if (ImGui.SliderInt("Light channel", ref lightedKeyboardChannel, 1, 16))
+        {
+            CoreSettings.SetLightedKeyboardSettings(
+                CoreSettings.LightedKeyboard.Enabled,
+                lightedKeyboardChannel);
+            MidiPracticeSession.RefreshLightedKeyboardGuidance();
+        }
+        ImGui.TextWrapped(
+            "Uses standard low-velocity MIDI notes for the next Required Hands target in Wait for Notes and Play in Time. " +
+            "Match this channel to the keyboard's light or navigate channel. The keyboard may sound guide notes unless its guide sound is disabled.");
+        if (CoreSettings.LightedKeyboard.Enabled && ODevice is null)
+            ImGui.TextWrapped("Select a MIDI output device before using light guidance.");
 
         ImGuiTheme.PopButton();
 
@@ -616,6 +658,22 @@ public class SettingsWindow : ImGuiWindow
         ImGui.Checkbox("Animated background", ref AnimatedBackground);
         ImGui.SameLine();
         ImGui.Checkbox("Fps counter", ref FpsCounter);
+
+        ImGui.Dummy(new(10));
+
+        var effectsPreference = AccessibilityRuntime.Settings.VisualEffects;
+        if (ImGui.BeginCombo("Visual effects", effectsPreference.ToString()))
+        {
+            foreach (VisualEffectsPreference preference in Enum.GetValues(typeof(VisualEffectsPreference)))
+            {
+                if (ImGui.Selectable(preference.ToString(), preference == effectsPreference))
+                    AccessibilityRuntime.SetVisualEffects(preference);
+            }
+            ImGui.EndCombo();
+        }
+        ImGui.TextWrapped("System follows Windows animation and contrast preferences. Reduce removes decorative motion, glow, and transparency.");
+        if (AccessibilityRuntime.Warning is not null)
+            ImGui.TextWrapped(AccessibilityRuntime.Warning);
 
         ImGui.Dummy(new(10));
 

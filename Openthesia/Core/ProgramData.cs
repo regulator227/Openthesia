@@ -23,6 +23,7 @@ public static class ProgramData
         Directory.CreateDirectory(DataPath);
         Directory.CreateDirectory(HandsDataPath);
         LoadSettings();
+        AccessibilityRuntime.Initialize(DataPath);
         try
         {
             ActiveLearner = new LearnerRegistry(DataPath).GetOrCreateActive();
@@ -103,6 +104,10 @@ public static class ProgramData
                     DevicesManager.SetInputDevice(storedSettings.InputDevice);
                 }
 
+                CoreSettings.SetLightedKeyboardSettings(
+                    storedSettings.LightedKeyboardGuidance,
+                    storedSettings.LightedKeyboardMidiChannel);
+
                 if (!string.IsNullOrEmpty(storedSettings.OutputDevice))
                 {
                     DevicesManager.SetOutputDevice(storedSettings.OutputDevice);
@@ -179,6 +184,8 @@ public static class ProgramData
         {
             InputDevice = DevicesManager.IDevice?.Name,
             OutputDevice = DevicesManager.ODevice?.Name,
+            LightedKeyboardGuidance = CoreSettings.LightedKeyboard.Enabled,
+            LightedKeyboardMidiChannel = CoreSettings.LightedKeyboard.MidiChannel,
             MidiPaths = MidiPathsManager.MidiPaths,
             SoundFontsPaths = SoundFontsPathsManager.SoundFontsPaths,
             InstrumentPath = PluginsPathManager.InstrumentPath,
@@ -221,5 +228,7 @@ public static class ProgramData
         {
             User32.MessageBox(IntPtr.Zero, $"{ex.Message}", "Error saving program settings", User32.MB_FLAGS.MB_OK | User32.MB_FLAGS.MB_ICONERROR | User32.MB_FLAGS.MB_TOPMOST);
         }
+
+        AccessibilityRuntime.Save();
     }
 }

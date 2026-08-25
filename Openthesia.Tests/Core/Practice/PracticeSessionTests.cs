@@ -167,12 +167,14 @@ public sealed class PracticeSessionTests
     [Fact]
     public void SatisfyingATargetWhileLearnerPausedDoesNotResumeTheChartClock()
     {
+        var nextTargetTime = ChartTime.FromMicroseconds(500_000);
         var chart = new PracticeChart(
             ChartId.FromHash(new byte[32]),
             ChartTime.FromMicroseconds(1_000_000),
             new[]
             {
-                new PracticeChartNote(0, 60, ChartTime.Zero, ChartTime.FromMicroseconds(250_000), PianoHand.Right)
+                new PracticeChartNote(0, 60, ChartTime.Zero, ChartTime.FromMicroseconds(250_000), PianoHand.Right),
+                new PracticeChartNote(1, 64, nextTargetTime, ChartTime.FromMicroseconds(250_000), PianoHand.Right)
             });
         var plan = PracticeSessionPlan.FullChart(
             PracticeMode.WaitForNotes,
@@ -191,6 +193,8 @@ public sealed class PracticeSessionTests
             new PracticeSignal.Resume(SessionTime.FromMicroseconds(500_000)));
 
         Assert.Equal(PracticeSessionState.LearnerPaused, afterTarget.Snapshot.State);
+        Assert.Equal(nextTargetTime, session.AccessibilityTarget!.Onset);
+        Assert.Equal(new byte[] { 64 }, session.AccessibilityTarget.Pitches);
         Assert.Equal(ChartTime.Zero, whilePaused.Snapshot.Position);
         Assert.Equal(PracticeSessionState.Running, resumed.Snapshot.State);
         Assert.IsType<PracticeEffect.PausePlayback>(Assert.Single(paused.Effects));

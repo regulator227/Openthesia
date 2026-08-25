@@ -28,42 +28,60 @@ public class ModeSelectionWindow : ImGuiWindow
 
     public static void RenderContainer()
     {
-        ImGui.PushStyleColor(ImGuiCol.ChildBg, ThemeManager.MainBgCol * 0.8f);
-        ImGui.PushStyleVar(ImGuiStyleVar.ChildBorderSize, 2f);
-        ImGui.PushStyleVar(ImGuiStyleVar.ChildRounding, 10f);
-        ImGui.SetNextWindowPos(new((ImGui.GetIO().DisplaySize.X - ImGui.GetIO().DisplaySize.X / 1.2f) / 2, ImGuiUtils.FixedSize(new Vector2(120)).Y));
-        if (ImGui.BeginChild("Container", new Vector2(ImGui.GetIO().DisplaySize.X / 1.2f, ImGui.GetIO().DisplaySize.Y / 1.2f),
-            ImGuiChildFlags.AlwaysUseWindowPadding | ImGuiChildFlags.Border))
-        {
-            ImGui.PopStyleVar(2);
+        var display = ImGui.GetIO().DisplaySize;
+        var margin = Math.Max(8f, Math.Min(ImGuiUtils.FixedSize(new Vector2(24)).X, display.X * 0.04f));
+        var top = Math.Min(ImGuiUtils.FixedSize(new Vector2(115)).Y, display.Y * 0.22f);
+        var size = new Vector2(
+            Math.Max(200f, display.X - margin * 2),
+            Math.Max(200f, display.Y - top - margin));
 
-            if (CoreSettings.AnimatedBackground)
+        ImGui.PushStyleColor(
+            ImGuiCol.ChildBg,
+            AccessibilityRuntime.Presentation.UseSystemContrast
+                ? AccessibilityRuntime.ContrastPalette.Window
+                : new Vector4(ThemeManager.MainBgCol.X, ThemeManager.MainBgCol.Y, ThemeManager.MainBgCol.Z, 1f));
+        ImGui.PushStyleVar(ImGuiStyleVar.ChildBorderSize, Math.Max(2f, 2f * FontController.DSF));
+        ImGui.PushStyleVar(ImGuiStyleVar.ChildRounding, 10f * FontController.DSF);
+        ImGui.SetCursorScreenPos(new Vector2(margin, top));
+        var visible = ImGui.BeginChild(
+            "Container",
+            size,
+            ImGuiChildFlags.AlwaysUseWindowPadding | ImGuiChildFlags.Border,
+            ImGuiWindowFlags.AlwaysVerticalScrollbar);
+        ImGui.PopStyleVar(2);
+        if (visible)
+        {
+            if (CoreSettings.AnimatedBackground && AccessibilityRuntime.Presentation.AllowDecorativeMotion)
                 Drawings.RenderMatrixBackground();
 
-            RenderTitle(MidiFileData.FileName.Replace(".mid", string.Empty), 50 * FontController.DSF);
+            RenderTitle(MidiFileData.FileName.Replace(".mid", string.Empty));
+            ImGui.TextWrapped("Choose how to use this Chart. Practice setup and progress remain available at every supported text and display scale.");
+            ImGui.SeparatorText("Practice setup");
             EnsurePracticePreferencesLoaded();
-
-            RenderIconWithText(FontAwesome6.Music, "Listen with the selected visualization", 0.1f, 2.5f);
-            RenderIconWithText(FontAwesome6.Gamepad, "Practice with accuracy and timing feedback", 0.36f, 2.5f);
-            RenderIconWithText(FontAwesome6.Hands, "Author left- and right-hand assignments", 0.625f, 2.5f);
-
             RenderPracticeConfiguration();
             RenderRecentProgress();
 
-            RenderButton("Performance Visualization", "#31CB15", 0.1f, 1.4f, SetupVisualization);
-            RenderButton(PracticeModeLabel(_practicePreferences.Mode), "#0EA5E9", 0.36f, 1.4f, SetupPractice);
-            RenderButton("Assign Hands", "#772525", 0.625f, 1.4f, SetupHandAssignment);
-
             if (_practiceWarning is not null)
-            {
-                ImGui.SetCursorPos(new Vector2(
-                    ImGui.GetIO().DisplaySize.X * 0.36f,
-                    ImGui.GetIO().DisplaySize.Y * 0.82f));
                 ImGui.TextWrapped(_practiceWarning);
-            }
 
-            ImGui.EndChild();
+            ImGui.SeparatorText("Start");
+            RenderButton(
+                "Performance Visualization",
+                "Listen with the selected visualization.",
+                "#31CB15",
+                SetupVisualization);
+            RenderButton(
+                $"Practice: {PracticeModeLabel(_practicePreferences.Mode)}",
+                "Practice with accuracy and timing feedback.",
+                "#0EA5E9",
+                SetupPractice);
+            RenderButton(
+                "Assign Hands",
+                "Author left- and right-hand assignments.",
+                "#772525",
+                SetupHandAssignment);
         }
+        ImGui.EndChild();
         ImGui.PopStyleColor();
     }
 
@@ -71,42 +89,31 @@ public class ModeSelectionWindow : ImGuiWindow
     {
         ImGui.PushFont(FontController.Font16_Icon16);
         ImGui.SetCursorScreenPos(ImGuiUtils.FixedSize(new Vector2(22, 50)));
-        if (ImGui.Button(FontAwesome6.ArrowLeftLong, ImGuiUtils.FixedSize(new Vector2(100, 50))))
+        if (ImGui.Button($"{FontAwesome6.ArrowLeftLong} Back", ImGuiUtils.FixedSize(new Vector2(120, 50))) ||
+            EscapeReturns())
         {
             WindowsManager.SetWindow(Enums.Windows.MidiBrowser);
         }
         ImGui.PopFont();
     }
 
-    private static void RenderTitle(string text, float offsetY)
+    private static bool EscapeReturns()
     {
-        ImGui.PushFont(FontController.Title);
-        ImGui.SetCursorPos(new Vector2((ImGui.GetContentRegionAvail().X - ImGui.CalcTextSize(text).X) / 2, offsetY));
-        ImGui.Text(text);
-        ImGui.PopFont();
+        return !ImGui.GetIO().WantTextInput &&
+               !ImGui.IsPopupOpen(string.Empty, ImGuiPopupFlags.AnyPopupId) &&
+               ImGui.IsKeyPressed(ImGuiKey.Escape, false);
     }
 
-    private static void RenderIconWithText(string icon, string text, float xFactor, float yFactor)
+    private static void RenderTitle(string text)
     {
-        var io = ImGui.GetIO();
-        ImGui.PushFont(FontController.BigIcon);
-        float xPos = io.DisplaySize.X * xFactor + ImGuiUtils.FixedSize(new Vector2(125)).X - ImGui.CalcTextSize(icon).X / 2;
-        float yPos = io.DisplaySize.Y / yFactor;
-   
-        ImGui.SetCursorPos(new Vector2(xPos, yPos));
-        ImGui.Text(icon);
-        ImGui.PopFont();
-
         ImGui.PushFont(FontController.GetFontOfSize(22));
-        var drawList = ImGui.GetWindowDrawList();
-        drawList.AddText(new Vector2(io.DisplaySize.X * xFactor + ImGuiUtils.FixedSize(new Vector2(125)).X, yPos),
-            ImGui.GetColorU32(Vector4.One), text);
+        ImGui.TextWrapped(text);
         ImGui.PopFont();
     }
 
-    private static void RenderButton(string label, string color, float xFactor, float yFactor, Action onClick)
+    private static void RenderButton(string label, string description, string color, Action onClick)
     {
-        var io = ImGui.GetIO();
+        ImGui.TextWrapped(description);
         ImGuiTheme.PushButton(
             ImGuiTheme.HtmlToVec4(color),
             ImGuiTheme.HtmlToVec4(color, 0.7f),
@@ -114,8 +121,8 @@ public class ModeSelectionWindow : ImGuiWindow
         );
 
         ImGui.PushFont(FontController.GetFontOfSize(22));
-        ImGui.SetCursorPos(new Vector2(io.DisplaySize.X * xFactor, io.DisplaySize.Y / yFactor));
-        if (ImGui.Button(label, ImGuiUtils.FixedSize(new Vector2(250, 100))))
+        var buttonWidth = Math.Max(100f, ImGui.GetContentRegionAvail().X);
+        if (ImGui.Button(label, new Vector2(buttonWidth, ImGuiUtils.FixedSize(new Vector2(54)).Y)))
         {
             onClick.Invoke();
         }
@@ -125,10 +132,10 @@ public class ModeSelectionWindow : ImGuiWindow
 
     private static void RenderPracticeConfiguration()
     {
-        var x = ImGui.GetIO().DisplaySize.X * 0.36f;
-        var y = ImGui.GetIO().DisplaySize.Y * 0.50f;
-        ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(250)).X);
-        ImGui.SetCursorPos(new Vector2(x, y));
+        var controlWidth = Math.Min(
+            ImGuiUtils.FixedSize(new Vector2(420)).X,
+            Math.Max(100f, ImGui.GetContentRegionAvail().X));
+        ImGui.SetNextItemWidth(controlWidth);
         if (ImGui.BeginCombo("##PracticeMode", $"Mode: {PracticeModeLabel(_practicePreferences.Mode)}"))
         {
             foreach (var mode in Enum.GetValues<PracticeMode>())
@@ -139,8 +146,7 @@ public class ModeSelectionWindow : ImGuiWindow
             ImGui.EndCombo();
         }
 
-        ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(250)).X);
-        ImGui.SetCursorPos(new Vector2(x, y + ImGuiUtils.FixedSize(new Vector2(38)).Y));
+        ImGui.SetNextItemWidth(controlWidth);
         if (ImGui.BeginCombo("##RequiredHands", $"Required Hands: {_practicePreferences.RequiredHands}"))
         {
             foreach (var hands in Enum.GetValues<RequiredHands>())
@@ -151,8 +157,7 @@ public class ModeSelectionWindow : ImGuiWindow
             ImGui.EndCombo();
         }
 
-        ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(250)).X);
-        ImGui.SetCursorPos(new Vector2(x, y + ImGuiUtils.FixedSize(new Vector2(76)).Y));
+        ImGui.SetNextItemWidth(controlWidth);
         ImGui.BeginDisabled(_practicePreferences.RequiredHands == RequiredHands.Both);
         if (ImGui.BeginCombo("##Accompaniment", $"Accompaniment: {_practicePreferences.Accompaniment}"))
         {
@@ -169,8 +174,7 @@ public class ModeSelectionWindow : ImGuiWindow
         }
         ImGui.EndDisabled();
 
-        ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(250)).X);
-        ImGui.SetCursorPos(new Vector2(x, y + ImGuiUtils.FixedSize(new Vector2(114)).Y));
+        ImGui.SetNextItemWidth(controlWidth);
         if (ImGui.BeginCombo("##PracticeTempo", $"Tempo: {_practicePreferences.TempoRatio:0.##}x"))
         {
             foreach (var tempoRatio in new[] { 0.25m, 0.5m, 0.75m, 1m, 1.25m, 1.5m, 2m })
@@ -185,9 +189,7 @@ public class ModeSelectionWindow : ImGuiWindow
             ImGui.EndCombo();
         }
 
-        var guidanceX = x + ImGuiUtils.FixedSize(new Vector2(270)).X;
-        ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(250)).X);
-        ImGui.SetCursorPos(new Vector2(guidanceX, y));
+        ImGui.SetNextItemWidth(controlWidth);
         if (ImGui.BeginCombo("##PracticeCountIn", $"Count-in: {_practicePreferences.CountInBeats} beats"))
         {
             foreach (var beats in PracticePreferences.SupportedCountInBeats)
@@ -200,16 +202,10 @@ public class ModeSelectionWindow : ImGuiWindow
         }
 
         var metronomeEnabled = _practicePreferences.MetronomeEnabled;
-        ImGui.SetCursorPos(new Vector2(
-            guidanceX,
-            y + ImGuiUtils.FixedSize(new Vector2(43)).Y));
         if (ImGui.Checkbox("Metronome", ref metronomeEnabled))
             _practicePreferences = _practicePreferences with { MetronomeEnabled = metronomeEnabled };
 
         var countInOnLoopRepeat = _practicePreferences.CountInOnLoopRepeat;
-        ImGui.SetCursorPos(new Vector2(
-            guidanceX,
-            y + ImGuiUtils.FixedSize(new Vector2(76)).Y));
         if (ImGui.Checkbox("Count in on every loop pass", ref countInOnLoopRepeat))
         {
             _practicePreferences = _practicePreferences with
@@ -221,10 +217,7 @@ public class ModeSelectionWindow : ImGuiWindow
         var selectedLoop = _selectedLoopId is { } selectedId
             ? _practiceNavigation.Loops.FirstOrDefault(loop => loop.Id == selectedId)
             : null;
-        ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(250)).X);
-        ImGui.SetCursorPos(new Vector2(
-            guidanceX,
-            y + ImGuiUtils.FixedSize(new Vector2(114)).Y));
+        ImGui.SetNextItemWidth(controlWidth);
         if (ImGui.BeginCombo(
                 "##PracticeRange",
                 selectedLoop is null ? "Range: Full Chart" : $"Loop: {selectedLoop.Name}"))
@@ -294,9 +287,7 @@ public class ModeSelectionWindow : ImGuiWindow
             progressParts.Add($"First completion · {firstCompletion.Result.EndedAtUtc.ToLocalTime():d}");
         progressParts.Add(
             $"Trend A/E/T · {progress.RecentTrend.Accuracy}/{progress.RecentTrend.Extras}/{progress.RecentTrend.Timing}");
-        ImGui.SetCursorPos(new Vector2(
-            ImGui.GetIO().DisplaySize.X * 0.36f,
-            ImGui.GetIO().DisplaySize.Y * 0.425f));
+        ImGui.SeparatorText("Recent progress");
         ImGui.TextWrapped($"{latestLine}\n{string.Join(" · ", progressParts)}");
     }
 
@@ -310,9 +301,7 @@ public class ModeSelectionWindow : ImGuiWindow
                       $"{latest.Outcome} · Completion {latest.Completion.Ratio:P1} · " +
                       $"Accuracy {latest.Accuracy.RequiredNotesHitRatio:P1} · " +
                       $"{latest.Accuracy.ExtraNotes} Extra{assisted}";
-        ImGui.SetCursorPos(new Vector2(
-            ImGui.GetIO().DisplaySize.X * 0.36f,
-            ImGui.GetIO().DisplaySize.Y * 0.425f));
+        ImGui.SeparatorText("Recent progress");
         ImGui.TextWrapped(summary);
     }
 

@@ -16,6 +16,7 @@ public abstract class ImGuiWindow
     /// ImGui window state
     /// </summary>
     protected bool _active;
+    private bool _focusOnActivation = true;
 
     /// <summary>
     /// ImGui window flags
@@ -45,6 +46,8 @@ public abstract class ImGuiWindow
 
     public void SetActive(bool active)
     {
+        if (active && !_active)
+            _focusOnActivation = true;
         _active = active;
     }
 
@@ -54,19 +57,27 @@ public abstract class ImGuiWindow
     public void RenderWindow()
     {
         ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 0f);
-        if (ImGui.Begin(_id, ref _active, _windowFlags))
+        var visible = ImGui.Begin(_id, ref _active, _windowFlags);
+        ImGui.PopStyleVar();
+        if (visible)
         {
-            ImGui.PopStyleVar();
             if (_isMainWindow)
             {
                 ImGui.SetWindowPos(Vector2.Zero);
                 ImGui.SetWindowSize(_io.DisplaySize);
             }
 
+            if (_focusOnActivation)
+            {
+                ImGui.SetWindowFocus();
+                ImGui.SetKeyboardFocusHere();
+                _focusOnActivation = false;
+            }
+
             _timer += _io.DeltaTime; // update window related timer
             OnImGui();
-            ImGui.End();
         }
+        ImGui.End();
     }
 
     /// <summary>
