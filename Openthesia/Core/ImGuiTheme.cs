@@ -42,6 +42,9 @@ public static class ImGuiTheme
             var interactive = AccessibilityPolicy.ContrastRatio(palette.WindowText, palette.Highlight) >= 4.5d
                 ? palette.Highlight
                 : palette.Window;
+            var focus = AccessibilityPolicy.ContrastRatio(palette.Window, palette.Highlight) >= 3d
+                ? palette.Highlight
+                : palette.WindowText;
             Style.Colors[(int)ImGuiCol.Text] = palette.WindowText;
             Style.Colors[(int)ImGuiCol.MenuBarBg] = palette.Window;
             Style.Colors[(int)ImGuiCol.WindowBg] = palette.Window;
@@ -59,7 +62,7 @@ public static class ImGuiTheme
             Style.Colors[(int)ImGuiCol.PopupBg] = palette.Window;
             Style.Colors[(int)ImGuiCol.TableRowBg] = palette.Window;
             Style.Colors[(int)ImGuiCol.TableRowBgAlt] = palette.Window;
-            Style.Colors[(int)ImGuiCol.NavHighlight] = palette.Highlight;
+            Style.Colors[(int)ImGuiCol.NavHighlight] = focus;
             Style.Colors[(int)ImGuiCol.Border] = palette.WindowText;
             Style.Colors[(int)ImGuiCol.CheckMark] = palette.WindowText;
             Style.Colors[(int)ImGuiCol.SliderGrab] = palette.WindowText;
@@ -141,7 +144,7 @@ public static class ImGuiTheme
         }
     }
 
-    private static Vector4 ReadableText(Vector4 background)
+    internal static Vector4 ReadableText(Vector4 background)
     {
         return AccessibilityPolicy.ContrastRatio(background, Vector4.One) >=
                AccessibilityPolicy.ContrastRatio(background, new Vector4(0, 0, 0, 1))

@@ -56,6 +56,13 @@ public sealed class AccessibilitySettingsStore
     public AccessibilitySettingsSaveResult Save(AccessibilitySettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
+        if (!Enum.IsDefined(typeof(VisualEffectsPreference), settings.VisualEffects))
+        {
+            return new AccessibilitySettingsSaveResult(
+                false,
+                "The accessibility settings contain an unsupported visual-effects preference.");
+        }
+
         if (!JsonFile.ExistingDocumentCanBeOverwritten(_path, path => ReadDocument(path)))
         {
             return new AccessibilitySettingsSaveResult(

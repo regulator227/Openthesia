@@ -96,4 +96,73 @@ public sealed class PracticeAccessibilityTests
             "Active loop: Chorus · Next bookmark: Coda at 00:03",
             description.NavigationText);
     }
+
+    [Fact]
+    public void RunningModesDescribeTheNextRequiredTarget()
+    {
+        var chart = new PracticeChart(
+            ChartId.Parse($"chart-v1-sha256:{new string('d', 64)}"),
+            ChartTime.FromMicroseconds(4_000_000),
+            new[]
+            {
+                new PracticeChartNote(
+                    1,
+                    48,
+                    ChartTime.FromMicroseconds(1_000_000),
+                    ChartTime.FromMicroseconds(500_000),
+                    PianoHand.Left),
+                new PracticeChartNote(
+                    2,
+                    64,
+                    ChartTime.FromMicroseconds(2_000_000),
+                    ChartTime.FromMicroseconds(500_000),
+                    PianoHand.Right)
+            });
+        var snapshot = new PracticeSessionSnapshot(
+            PracticeSessionState.Running,
+            ChartTime.FromMicroseconds(1_500_000),
+            Target: null);
+
+        var description = PracticeAccessibility.Describe(
+            chart,
+            snapshot,
+            Array.Empty<PracticeFeedback>(),
+            PracticeNavigation.Empty,
+            activeLoop: null,
+            RequiredHands.Right);
+
+        Assert.Equal("Next target: E4 · Right", description.TargetText);
+    }
+
+    [Theory]
+    [InlineData(RequiredHands.Left, "Current target: C4 · Left")]
+    [InlineData(RequiredHands.Right, "Current target: C4 · Right")]
+    public void CurrentTargetUsesTheRequiredHandForOverlappingPitch(
+        RequiredHands requiredHands,
+        string expected)
+    {
+        var onset = ChartTime.FromMicroseconds(1_000_000);
+        var chart = new PracticeChart(
+            ChartId.Parse($"chart-v1-sha256:{new string('e', 64)}"),
+            ChartTime.FromMicroseconds(4_000_000),
+            new[]
+            {
+                new PracticeChartNote(1, 60, onset, ChartTime.FromMicroseconds(500_000), PianoHand.Left),
+                new PracticeChartNote(2, 60, onset, ChartTime.FromMicroseconds(500_000), PianoHand.Right)
+            });
+        var snapshot = new PracticeSessionSnapshot(
+            PracticeSessionState.WaitingForInput,
+            onset,
+            new PracticeTarget(onset, new byte[] { 60 }));
+
+        var description = PracticeAccessibility.Describe(
+            chart,
+            snapshot,
+            Array.Empty<PracticeFeedback>(),
+            PracticeNavigation.Empty,
+            activeLoop: null,
+            requiredHands);
+
+        Assert.Equal(expected, description.TargetText);
+    }
 }

@@ -35,7 +35,8 @@ public readonly record struct PracticeInputContext(
     bool TextInputActive,
     bool ControlFocused,
     bool ComputerKeyboardInputEnabled,
-    bool OverlayOpen = false);
+    bool OverlayOpen = false,
+    bool ControlActive = false);
 
 public static class PracticeCommandMap
 {
@@ -47,7 +48,7 @@ public static class PracticeCommandMap
         command = default;
         if (context.TextInputActive || context.OverlayOpen)
             return false;
-        if (context.ControlFocused && stroke.Key != PracticeKey.Escape)
+        if ((context.ControlFocused || context.ControlActive) && stroke.Key != PracticeKey.Escape)
             return false;
         if (context.ComputerKeyboardInputEnabled &&
             !stroke.Control &&
@@ -76,5 +77,13 @@ public static class PracticeCommandMap
 
         command = mapped.Value;
         return true;
+    }
+
+    public static bool CanRouteComputerPianoNotes(PracticeInputContext context)
+    {
+        return context.ComputerKeyboardInputEnabled &&
+               !context.TextInputActive &&
+               !context.ControlActive &&
+               !context.OverlayOpen;
     }
 }

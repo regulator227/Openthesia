@@ -37,4 +37,6 @@ Run the journey at Windows display scaling of 100%, 150%, and 200%, each with te
 
 ## Automated coverage
 
-The public seams `AccessibilitySettingsStore.Load/Save`, `AccessibilityPolicy.Resolve`, `PracticeAccessibility.Describe`, and `PracticeCommandMap.TryMap` cover persistence and safe fallback, the 100/150/200% × 225% scale policy, effects and contrast precedence, non-color Practice descriptions, and shortcut ownership. A native hidden startup smoke check additionally exercises Windows DPI setup, font-atlas creation, and graphics initialization.
+The public seams `AccessibilitySettingsStore.Load/Save`, `AccessibilityPolicy.Resolve`, `PracticeAccessibility.Describe`, and `PracticeCommandMap.TryMap` cover persistence and safe fallback, the 100/150/200% × 225% scale policy, effects and contrast precedence, non-color Practice descriptions, and shortcut ownership. `ImGuiFontAtlasTests` rasterizes the actual atlas at the known-safe 200% display scale and the maximum supported combined scale to guard against texture exhaustion.
+
+During issue #15 verification on 2026-08-25, the built x64 application was also launched in a hidden native Windows session and kept alive long enough to exercise DPI setup, font-atlas creation, and graphics initialization. Repeat that manual smoke check whenever graphics, fonts, or DPI initialization changes.

@@ -13,6 +13,29 @@ using Openthesia.Ui.Helpers;
 
 namespace Openthesia.Core;
 
+internal readonly record struct ImGuiFontScalePlan(
+    float UiScale,
+    float AtlasScale,
+    float GlobalScale,
+    float DecorativeScale)
+{
+    public static ImGuiFontScalePlan Resolve(float scale)
+    {
+        var uiScale = Math.Clamp(scale, 1f, 9f);
+        var atlasScale = Math.Min(uiScale, 2f);
+        return new ImGuiFontScalePlan(
+            uiScale,
+            atlasScale,
+            uiScale / atlasScale,
+            Math.Min(uiScale, 3f));
+    }
+}
+
+internal readonly record struct ImGuiFontAtlasDimensions(
+    int Width,
+    int Height,
+    ImGuiFontScalePlan Plan);
+
 public class ImGuiController : IDisposable
 {
     private GraphicsDevice _gd;
@@ -43,6 +66,7 @@ public class ImGuiController : IDisposable
     private Vector2 _scaleFactor = Vector2.One;
     private float _fontScale = 1f;
     private float _requestedFontScale = 1f;
+    private IntPtr _iconFontRanges;
 
     // Image trackers
     private readonly Dictionary<TextureView, ResourceSetInfo> _setsByView
@@ -68,6 +92,7 @@ public class ImGuiController : IDisposable
         io.BackendFlags |= ImGuiBackendFlags.RendererHasVtxOffset;
         io.ConfigFlags |= ImGuiConfigFlags.NavEnableKeyboard;
         io.Fonts.Flags |= ImFontAtlasFlags.NoBakedLines;
+        _iconFontRanges = CreateIconFontRanges();
 
         var initialScale = AccessibilityPolicy.Resolve(
             AccessibilitySettings.Default,
@@ -81,69 +106,141 @@ public class ImGuiController : IDisposable
         _frameBegun = true;
     }
 
-    public unsafe void LoadFonts(float scale)
+    public void LoadFonts(float scale)
     {
-        scale = Math.Clamp(scale, 1f, 9f);
-        _fontScale = scale;
-        _requestedFontScale = scale;
-        FontController.DSF = scale;
+        var plan = ImGuiFontScalePlan.Resolve(scale);
+        _fontScale = plan.UiScale;
+        _requestedFontScale = plan.UiScale;
+        LoadFontsCore(plan, _iconFontRanges);
+    }
+
+    private static void LoadFontsCore(ImGuiFontScalePlan plan, IntPtr iconFontRanges)
+    {
+        FontController.DSF = plan.UiScale;
         FontController.FontSizes.Clear();
-        ImGui.GetIO().Fonts.Clear();
+        var io = ImGui.GetIO();
+        io.Fonts.Clear();
+        io.FontGlobalScale = plan.GlobalScale;
 
-        // load custom font
         TryGetEmbeddedResourceBytes("Inter", out var fontData);
-        GCHandle pinnedArray = GCHandle.Alloc(fontData, GCHandleType.Pinned);
-        IntPtr pointer = pinnedArray.AddrOfPinnedObject();
 
-        FontController.Font16_Icon12 = ImGui.GetIO().Fonts.AddFontFromMemoryTTF(pointer, fontData.Length, 16 * scale);
-        LoadIcons(12 * scale);
+        FontController.Font16_Icon12 = AddOwnedFont(fontData, 16 * plan.AtlasScale);
+        LoadIcons(12 * plan.AtlasScale, iconFontRanges);
 
-        FontController.Font16_Icon16 = ImGui.GetIO().Fonts.AddFontFromMemoryTTF(pointer, fontData.Length, 16 * scale);
-        LoadIcons(16 * scale);
+        FontController.Font16_Icon16 = AddOwnedFont(fontData, 16 * plan.AtlasScale);
+        LoadIcons(16 * plan.AtlasScale, iconFontRanges);
 
-        var decorativeScale = Math.Min(scale, 3f);
-        FontController.Title = ImGui.GetIO().Fonts.AddFontFromMemoryTTF(pointer, fontData.Length, 80 * decorativeScale);
-        FontController.BigIcon = ImGui.GetIO().Fonts.AddFontFromMemoryTTF(pointer, fontData.Length, 120 * decorativeScale);
-        LoadIcons(120 * decorativeScale);
+        FontController.Title = AddOwnedFont(
+            fontData,
+            80 * plan.DecorativeScale / plan.GlobalScale);
+        FontController.BigIcon = AddOwnedFont(
+            fontData,
+            120 * plan.DecorativeScale / plan.GlobalScale);
+        LoadIcons(120 * plan.DecorativeScale / plan.GlobalScale, iconFontRanges);
 
         for (int i = 17; i <= 25; i++)
         {
-            FontController.FontSizes.Add(ImGui.GetIO().Fonts.AddFontFromMemoryTTF(pointer, fontData.Length, i * scale));
-            LoadIcons(i * scale);
+            FontController.FontSizes.Add(AddOwnedFont(fontData, i * plan.AtlasScale));
+            LoadIcons(i * plan.AtlasScale, iconFontRanges);
         }
-
-        pinnedArray.Free();
     }
 
-    static unsafe void LoadIcons(float fontSize)
+    private static unsafe ImFontPtr AddOwnedFont(byte[] fontData, float fontSize)
     {
-        ImFontConfigPtr icons_config = ImGuiNative.ImFontConfig_ImFontConfig();
-        icons_config.MergeMode = true;
-        icons_config.PixelSnapH = true;
-        icons_config.FontDataOwnedByAtlas = false;
-
-        icons_config.GlyphMaxAdvanceX = float.MaxValue;
-        icons_config.RasterizerMultiply = 1.0f;
-        icons_config.OversampleH = 2;
-        icons_config.OversampleV = 1;
-
-        ushort[] IconRanges = new ushort[3];
-        IconRanges[0] = IconFonts.FontAwesome6.IconMin;
-        IconRanges[1] = IconFonts.FontAwesome6.IconMax;
-        IconRanges[2] = 0;
-
-        fixed (ushort* range = &IconRanges[0])
+        void* memory = ImGuiNative.igMemAlloc((uint)fontData.Length);
+        if (memory is null)
+            throw new OutOfMemoryException("Dear ImGui could not allocate font data.");
+        Marshal.Copy(fontData, 0, (IntPtr)memory, fontData.Length);
+        var transferred = false;
+        try
         {
-            IconFonts.FontAwesome6.IconFontRanges = Marshal.AllocHGlobal(6);
-            Buffer.MemoryCopy(range, IconFonts.FontAwesome6.IconFontRanges.ToPointer(), 6, 6);
-            icons_config.GlyphRanges = (IntPtr)(ushort*)IconFonts.FontAwesome6.IconFontRanges.ToPointer();
+            var font = ImGui.GetIO().Fonts.AddFontFromMemoryTTF(
+                (IntPtr)memory,
+                fontData.Length,
+                fontSize);
+            transferred = true;
+            return font;
+        }
+        finally
+        {
+            if (!transferred)
+                ImGuiNative.igMemFree(memory);
+        }
+    }
 
-            byte[] fontDataBuffer = Convert.FromBase64String(IconFonts.FontAwesome6.IconFontData);
+    private static unsafe void LoadIcons(float fontSize, IntPtr iconFontRanges)
+    {
+        ImFontConfigPtr config = ImGuiNative.ImFontConfig_ImFontConfig();
+        try
+        {
+            config.MergeMode = true;
+            config.PixelSnapH = true;
+            config.FontDataOwnedByAtlas = true;
+            config.GlyphMaxAdvanceX = float.MaxValue;
+            config.RasterizerMultiply = 1.0f;
+            config.OversampleH = 2;
+            config.OversampleV = 1;
+            config.GlyphRanges = iconFontRanges;
 
-            fixed (byte* buffer = fontDataBuffer)
+            var fontData = Convert.FromBase64String(IconFonts.FontAwesome6.IconFontData);
+            void* memory = ImGuiNative.igMemAlloc((uint)fontData.Length);
+            if (memory is null)
+                throw new OutOfMemoryException("Dear ImGui could not allocate icon font data.");
+            Marshal.Copy(fontData, 0, (IntPtr)memory, fontData.Length);
+            var transferred = false;
+            try
             {
-                var fontPtr = ImGui.GetIO().Fonts.AddFontFromMemoryTTF(new IntPtr(buffer), fontDataBuffer.Length, fontSize, icons_config, IconFonts.FontAwesome6.IconFontRanges);
+                ImGui.GetIO().Fonts.AddFontFromMemoryTTF(
+                    (IntPtr)memory,
+                    fontData.Length,
+                    fontSize,
+                    config,
+                    iconFontRanges);
+                transferred = true;
             }
+            finally
+            {
+                if (!transferred)
+                    ImGuiNative.igMemFree(memory);
+            }
+        }
+        finally
+        {
+            ImGuiNative.ImFontConfig_destroy(config.NativePtr);
+        }
+    }
+
+    private static unsafe IntPtr CreateIconFontRanges()
+    {
+        var ranges = (ushort*)Marshal.AllocHGlobal(sizeof(ushort) * 3);
+        ranges[0] = IconFonts.FontAwesome6.IconMin;
+        ranges[1] = IconFonts.FontAwesome6.IconMax;
+        ranges[2] = 0;
+        return (IntPtr)ranges;
+    }
+
+    internal static unsafe ImGuiFontAtlasDimensions BuildFontAtlasForTesting(float scale)
+    {
+        var context = ImGui.CreateContext();
+        var ranges = CreateIconFontRanges();
+        try
+        {
+            var plan = ImGuiFontScalePlan.Resolve(scale);
+            LoadFontsCore(plan, ranges);
+            IntPtr pixels;
+            ImGui.GetIO().Fonts.GetTexDataAsRGBA32(
+                out pixels,
+                out var width,
+                out var height,
+                out _);
+            ImGui.GetIO().Fonts.ClearTexData();
+            return new ImGuiFontAtlasDimensions(width, height, plan);
+        }
+        finally
+        {
+            ImGui.GetIO().Fonts.Clear();
+            Marshal.FreeHGlobal(ranges);
+            ImGui.DestroyContext(context);
         }
     }
 
@@ -719,6 +816,12 @@ public class ImGuiController : IDisposable
         foreach (IDisposable resource in _ownedResources)
         {
             resource.Dispose();
+        }
+
+        if (_iconFontRanges != IntPtr.Zero)
+        {
+            Marshal.FreeHGlobal(_iconFontRanges);
+            _iconFontRanges = IntPtr.Zero;
         }
     }
 

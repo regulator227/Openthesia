@@ -95,4 +95,19 @@ public sealed class PracticeCommandMapTests
             new PracticeKeyStroke(PracticeKey.Escape),
             out _));
     }
+
+    [Fact]
+    public void PassiveNavigationFocusDoesNotDisableComputerPianoNotes()
+    {
+        var focused = new PracticeInputContext(
+            TextInputActive: false,
+            ControlFocused: true,
+            ComputerKeyboardInputEnabled: true,
+            OverlayOpen: false,
+            ControlActive: false);
+        var active = focused with { ControlActive = true };
+
+        Assert.True(PracticeCommandMap.CanRouteComputerPianoNotes(focused));
+        Assert.False(PracticeCommandMap.CanRouteComputerPianoNotes(active));
+    }
 }

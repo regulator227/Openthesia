@@ -54,6 +54,18 @@ public sealed class AccessibilitySettingsStoreTests : IDisposable
         Assert.Equal("not valid JSON", File.ReadAllText(path));
     }
 
+    [Fact]
+    public void UndefinedVisualEffectsPreferenceIsRejectedBeforeWriting()
+    {
+        var store = new AccessibilitySettingsStore(_dataDirectory);
+
+        var saved = store.Save(new AccessibilitySettings((VisualEffectsPreference)999));
+
+        Assert.False(saved.Saved);
+        Assert.NotNull(saved.Warning);
+        Assert.False(File.Exists(Path.Combine(_dataDirectory, "Accessibility.json")));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dataDirectory))

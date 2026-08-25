@@ -18,6 +18,8 @@ public enum PracticeNavigationDirection
 
 public sealed class PracticeNavigation : IEquatable<PracticeNavigation>
 {
+    private readonly IReadOnlyList<PracticeBookmark> _sortedBookmarks;
+
     public static PracticeNavigation Empty { get; } = new(
         Array.Empty<PracticeLoop>(),
         Array.Empty<PracticeBookmark>());
@@ -30,6 +32,10 @@ public sealed class PracticeNavigation : IEquatable<PracticeNavigation>
         ArgumentNullException.ThrowIfNull(bookmarks);
         Loops = loops.ToArray();
         Bookmarks = bookmarks.ToArray();
+        _sortedBookmarks = Bookmarks
+            .OrderBy(bookmark => bookmark.Position)
+            .ThenBy(bookmark => bookmark.Id)
+            .ToArray();
     }
 
     public IReadOnlyList<PracticeLoop> Loops { get; }
@@ -82,13 +88,9 @@ public sealed class PracticeNavigation : IEquatable<PracticeNavigation>
         if (Bookmarks.Count == 0)
             return null;
 
-        var sorted = Bookmarks
-            .OrderBy(bookmark => bookmark.Position)
-            .ThenBy(bookmark => bookmark.Id)
-            .ToArray();
         return direction == PracticeNavigationDirection.Next
-            ? sorted.FirstOrDefault(bookmark => bookmark.Position.CompareTo(playhead) > 0) ?? sorted[0]
-            : sorted.LastOrDefault(bookmark => bookmark.Position.CompareTo(playhead) < 0) ?? sorted[^1];
+            ? _sortedBookmarks.FirstOrDefault(bookmark => bookmark.Position.CompareTo(playhead) > 0) ?? _sortedBookmarks[0]
+            : _sortedBookmarks.LastOrDefault(bookmark => bookmark.Position.CompareTo(playhead) < 0) ?? _sortedBookmarks[^1];
     }
 
     public bool IsValid(ChartTime chartDuration)

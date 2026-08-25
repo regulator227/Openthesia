@@ -549,7 +549,11 @@ public class ScreenCanvas
         var position = new Vector2(
             minimum.X + Math.Max(1f, (maximum.X - minimum.X - size.X) / 2),
             minimum.Y + Math.Max(1f, (maximum.Y - minimum.Y - size.Y) / 2));
-        drawList.AddText(position + Vector2.One, ImGui.GetColorU32(new Vector4(0, 0, 0, 1)), label);
+        var padding = Vector2.One * Math.Max(1f, FontController.DSF);
+        drawList.AddRectFilled(
+            position - padding,
+            position + size + padding,
+            ImGui.GetColorU32(new Vector4(0, 0, 0, 1)));
         drawList.AddText(position, ImGui.GetColorU32(Vector4.One), label);
         ImGui.PopFont();
     }
@@ -602,21 +606,34 @@ public class ScreenCanvas
                 var position = new Vector2(
                     center.X - ImGui.CalcTextSize(label).X / 2,
                     center.Y - ImGuiUtils.FixedSize(new Vector2(32 + row * 18)).Y);
-                var color = feedback.Judgment switch
+                var judgmentColor = feedback.Judgment switch
                 {
                     TimingJudgment.Fantastic => new Vector4(0.20f, 0.85f, 0.35f, 1),
                     TimingJudgment.Early or TimingJudgment.Late => new Vector4(1f, 0.72f, 0.15f, 1),
                     _ => new Vector4(0.95f, 0.25f, 0.25f, 1)
                 };
-                if (AccessibilityRuntime.Presentation.UseSystemContrast)
-                    color = AccessibilityRuntime.ContrastPalette.WindowText;
-                ImGui.GetForegroundDrawList().AddText(
-                    position + Vector2.One * Math.Max(1f, FontController.DSF),
+                var background = AccessibilityRuntime.Presentation.UseSystemContrast
+                    ? AccessibilityRuntime.ContrastPalette.Window
+                    : new Vector4(ThemeManager.MainBgCol.X, ThemeManager.MainBgCol.Y, ThemeManager.MainBgCol.Z, 1f);
+                var text = AccessibilityRuntime.Presentation.UseSystemContrast
+                    ? AccessibilityRuntime.ContrastPalette.WindowText
+                    : ImGuiTheme.ReadableText(background);
+                var padding = Vector2.One * Math.Max(2f, FontController.DSF * 2f);
+                var size = ImGui.CalcTextSize(label);
+                ImGui.GetForegroundDrawList().AddRectFilled(
+                    position - padding,
+                    position + size + padding,
+                    ImGui.GetColorU32(background));
+                ImGui.GetForegroundDrawList().AddRect(
+                    position - padding,
+                    position + size + padding,
                     ImGui.GetColorU32(AccessibilityRuntime.Presentation.UseSystemContrast
-                        ? AccessibilityRuntime.ContrastPalette.Window
-                        : new Vector4(0, 0, 0, 1)),
-                    label);
-                ImGui.GetForegroundDrawList().AddText(position, ImGui.GetColorU32(color), label);
+                        ? AccessibilityRuntime.ContrastPalette.WindowText
+                        : judgmentColor),
+                    0,
+                    ImDrawFlags.None,
+                    Math.Max(2f, FontController.DSF * 2f));
+                ImGui.GetForegroundDrawList().AddText(position, ImGui.GetColorU32(text), label);
                 row++;
             }
         }
@@ -724,7 +741,7 @@ public class ScreenCanvas
 
     private static void GetInputs()
     {
-        if (CoreSettings.KeyboardInput && !UiOwnsKeyboard())
+        if (PracticeCommandMap.CanRouteComputerPianoNotes(CurrentInputContext()))
         {
             VirtualKeyboard.ListenForKeyPresses();
         }
@@ -777,11 +794,7 @@ public class ScreenCanvas
     private static bool IsMappedCommandPressed(PracticeCommand expected)
     {
         var io = ImGui.GetIO();
-        var context = new PracticeInputContext(
-            io.WantTextInput,
-            ImGui.IsAnyItemActive() || ImGui.IsAnyItemFocused(),
-            CoreSettings.KeyboardInput,
-            _showPracticeTools || ImGui.IsPopupOpen(string.Empty, ImGuiPopupFlags.AnyPopupId));
+        var context = CurrentInputContext();
         foreach (var key in PracticeCommandKeys)
         {
             if (!ImGui.IsKeyPressed(key.ImGuiKey, false))
@@ -797,6 +810,16 @@ public class ScreenCanvas
         }
 
         return false;
+    }
+
+    private static PracticeInputContext CurrentInputContext()
+    {
+        return new PracticeInputContext(
+            ImGui.GetIO().WantTextInput,
+            ImGui.IsAnyItemFocused(),
+            CoreSettings.KeyboardInput,
+            _showPracticeTools || ImGui.IsPopupOpen(string.Empty, ImGuiPopupFlags.AnyPopupId),
+            ImGui.IsAnyItemActive());
     }
 
     public static void RenderCanvas(bool playMode = false)
@@ -822,7 +845,8 @@ public class ScreenCanvas
 
             GetInputs();
 
-            var showTopBar = ImGui.IsMouseHoveringRect(Vector2.Zero, new(ImGui.GetIO().DisplaySize.X, 300));
+            var showTopBar = IsPracticeMode ||
+                             ImGui.IsMouseHoveringRect(Vector2.Zero, new(ImGui.GetIO().DisplaySize.X, 300));
             if (_comboFallSpeed || _comboPlaybackSpeed || _leftHandColorPicker || _rightHandColorPicker || _comboSoundFont || _comboPlugins)
                 showTopBar = true;
 
@@ -1458,18 +1482,16 @@ public class ScreenCanvas
             ImGuiWindowFlags.HorizontalScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
         if (visible)
         {
-            var normalText = AccessibilityRuntime.Presentation.UseSystemContrast
-                ? AccessibilityRuntime.ContrastPalette.ButtonText
-                : Vector4.One;
-            var playColor = !MidiPlayer.IsTimerRunning ? normalText : ThemeManager.RightHandCol;
             var buttonSize = new Vector2(
                 ImGuiUtils.FixedSize(new Vector2(112)).X,
                 ImGuiUtils.FixedSize(new Vector2(50)).Y);
 
             // PLAY BUTTON
             ImGui.PushFont(FontController.Font16_Icon16);
-            ImGuiTheme.Style.Colors[(int)ImGuiCol.Text] = playColor;
-            if (ImGui.Button($"{FontAwesome6.Play} Play", buttonSize))
+            var playLabel = MidiPlayer.IsTimerRunning
+                ? $"{FontAwesome6.Play} Playing"
+                : $"{FontAwesome6.Play} Play";
+            if (ImGui.Button(playLabel, buttonSize))
             {
                 if (IsPracticeMode)
                     MidiPracticeSession.Resume();
@@ -1479,11 +1501,8 @@ public class ScreenCanvas
                     MidiPlayer.StartTimer();
                 }
             }
-            ImGuiTheme.Style.Colors[(int)ImGuiCol.Text] = normalText;
-            var pauseColor = MidiPlayer.IsTimerRunning ? normalText : new(0.90f, 0.35f, 0.35f, 1);
             ImGui.SameLine();
             // PAUSE BUTTON
-            ImGuiTheme.Style.Colors[(int)ImGuiCol.Text] = pauseColor;
             if (ImGui.Button($"{FontAwesome6.Pause} Pause", buttonSize))
             {
                 if (IsPracticeMode)
@@ -1494,7 +1513,6 @@ public class ScreenCanvas
                     MidiPlayer.IsTimerRunning = false;
                 }
             }
-            ImGuiTheme.Style.Colors[(int)ImGuiCol.Text] = normalText;
             ImGui.SameLine();
             // STOP BUTTON
             if (ImGui.Button($"{FontAwesome6.Stop} Stop", buttonSize) || IsMappedCommandPressed(PracticeCommand.ClearInput))
@@ -1512,8 +1530,10 @@ public class ScreenCanvas
             }
             ImGui.SameLine();
             // RECORD SCREEN BUTTON
-            ImGui.PushStyleColor(ImGuiCol.Text, ScreenRecorder.Status == RecorderStatus.Recording ? new Vector4(0.08f, 0.80f, 0.27f, 1) : normalText);
-            if (ImGui.Button($"{FontAwesome6.Video} Record", buttonSize)
+            var recordLabel = ScreenRecorder.Status == RecorderStatus.Recording
+                ? $"{FontAwesome6.Video} Recording"
+                : $"{FontAwesome6.Video} Record";
+            if (ImGui.Button(recordLabel, buttonSize)
                 || IsMappedCommandPressed(PracticeCommand.ToggleRecording))
             {
                 switch (ScreenRecorder.Status)
@@ -1546,7 +1566,6 @@ public class ScreenCanvas
                         break;
                 }
             }
-            ImGui.PopStyleColor();
 
             ImGui.PopFont();
         }
@@ -1741,7 +1760,7 @@ public class ScreenCanvas
         {
             // SOUNDFONTS DROPDOWN LIST
             ImGui.SetCursorScreenPos(new(ImGuiUtils.FixedSize(new Vector2(160)).X, CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(50)).Y));
-            if (ImGui.BeginCombo("##SoundFont", SoundFontPlayer.ActiveSoundFont, ImGuiComboFlags.HeightLargest | ImGuiComboFlags.WidthFitPreview))
+            if (ImGui.BeginCombo("SoundFont##SoundFont", SoundFontPlayer.ActiveSoundFont, ImGuiComboFlags.HeightLargest | ImGuiComboFlags.WidthFitPreview))
             {
                 _comboSoundFont = true;
                 foreach (var folderPath in SoundFontsPathsManager.SoundFontsPaths)
@@ -1767,7 +1786,7 @@ public class ScreenCanvas
 
             // PLUGINS DROPDOWN LIST
             ImGui.SetCursorScreenPos(new(ImGuiUtils.FixedSize(new Vector2(160)).X, CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(50)).Y));
-            if (ImGui.BeginCombo("##Plugins", name, ImGuiComboFlags.HeightLargest | ImGuiComboFlags.WidthFitPreview))
+            if (ImGui.BeginCombo("Plugin instrument##Plugins", name, ImGuiComboFlags.HeightLargest | ImGuiComboFlags.WidthFitPreview))
             {
                 _comboPlugins = true;
 
@@ -1775,12 +1794,12 @@ public class ScreenCanvas
 
                 ImGui.Text(name);
                 ImGui.SameLine();
-                if (ImGui.SmallButton($"{FontAwesome6.ScrewdriverWrench}##tweak_instrument") && instrument is VstPlugin vstInstrument)
+                if (ImGui.SmallButton($"{FontAwesome6.ScrewdriverWrench} Edit instrument##tweak_instrument") && instrument is VstPlugin vstInstrument)
                 {
                     vstInstrument.OpenPluginWindow();
                 }
                 ImGui.SameLine();
-                if (ImGui.SmallButton($"{FontAwesome6.FolderOpen}##change_instrument"))
+                if (ImGui.SmallButton($"{FontAwesome6.FolderOpen} Change instrument##change_instrument"))
                 {
                     var dialog = new OpenFileDialog()
                     {
@@ -1815,7 +1834,7 @@ public class ScreenCanvas
                     ImGui.AlignTextToFramePadding();
                     ImGui.Text(effect.PluginName);
                     ImGui.SameLine();
-                    if (ImGui.SmallButton($"{FontAwesome6.ScrewdriverWrench}##tweak_effect{effect.PluginId}") && effect is VstPlugin vstEffect)
+                    if (ImGui.SmallButton($"{FontAwesome6.ScrewdriverWrench} Edit effect##tweak_effect{effect.PluginId}") && effect is VstPlugin vstEffect)
                     {
                         vstEffect.OpenPluginWindow();
                     }
@@ -1835,11 +1854,10 @@ public class ScreenCanvas
         }
 
         // SUSTAIN PEDAL BUTTON
-        // ImageButton padding according to https://github.com/ocornut/imgui/issues/6901#issuecomment-1749178625
-        var imagePadding = ImGui.GetStyle().FramePadding * 2.0f;
-        ImGui.SetCursorPos(ImGui.GetWindowSize() - ImGuiUtils.FixedSize(new Vector2(65) + imagePadding));
-        if (ImGui.ImageButton("SustainBtn", IOHandle.SustainPedalActive ? Drawings.SustainPedalOn : Drawings.SustainPedalOff, 
-                ImGuiUtils.FixedSize(new Vector2(50))))
+        var sustainLabel = IOHandle.SustainPedalActive ? "Sustain: On" : "Sustain: Off";
+        var sustainSize = ImGuiUtils.FixedSize(new Vector2(130, 50));
+        ImGui.SetCursorPos(ImGui.GetWindowSize() - sustainSize - ImGuiUtils.FixedSize(new Vector2(15)));
+        if (ImGui.Button($"{sustainLabel}##SustainBtn", sustainSize))
         {
             IOHandle.OnEventReceived(null, new Melanchall.DryWetMidi.Multimedia.MidiEventReceivedEventArgs(
                 new ControlChangeEvent(ControlUtilities.AsSevenBitNumber(ControlName.DamperPedal),

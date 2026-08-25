@@ -82,7 +82,8 @@ public static class MidiPracticeSession
                             ? _latestFeedback
                             : Array.Empty<PracticeFeedback>(),
                         _navigation,
-                        ActiveLoopCore())
+                        ActiveLoopCore(),
+                        _plan?.RequiredHands ?? RequiredHands.Both)
                     : null;
             }
         }

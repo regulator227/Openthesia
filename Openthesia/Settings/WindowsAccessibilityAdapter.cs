@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
 
@@ -158,8 +159,10 @@ public static class WindowsAccessibilityAdapter
 
 public static class AccessibilityRuntime
 {
+    private static readonly long PollInterval = Math.Max(1, Stopwatch.Frequency / 4);
     private static AccessibilitySettingsStore? _store;
     private static WindowsAccessibilitySnapshot? _snapshot;
+    private static long _nextCaptureAt;
 
     public static AccessibilitySettings Settings { get; private set; } = AccessibilitySettings.Default;
     public static AccessibilityPresentation Presentation { get; private set; } = AccessibilityPolicy.Resolve(
@@ -174,10 +177,17 @@ public static class AccessibilityRuntime
         var loaded = _store.Load();
         Settings = loaded.Settings;
         Warning = loaded.Warning;
+        _snapshot = null;
+        _nextCaptureAt = 0;
     }
 
     public static bool Update(IntPtr windowHandle)
     {
+        var now = Stopwatch.GetTimestamp();
+        if (_snapshot is not null && now < _nextCaptureAt)
+            return false;
+
+        _nextCaptureAt = now + PollInterval;
         var snapshot = WindowsAccessibilityAdapter.Capture(windowHandle);
         if (snapshot == _snapshot)
             return false;
