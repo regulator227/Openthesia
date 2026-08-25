@@ -1,5 +1,4 @@
 ﻿using Openthesia.Core.Midi;
-using Openthesia.Core.Practice;
 using Openthesia.Ui.Windows;
 
 namespace Openthesia.Core;
@@ -59,7 +58,6 @@ public class Application
 
     public void Quit()
     {
-        MidiPracticeSession.ClearLightedKeyboardGuidance();
         MidiPlayer.SoundFontEngine?.Dispose();
         _isRunning = false;
     }

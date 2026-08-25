@@ -122,6 +122,48 @@ public sealed class LightedKeyboardGuidanceTests
     }
 
     [Fact]
+    public void ResetBeforeAttachingOutputAllowsTheCurrentTargetToBeSent()
+    {
+        var output = new AttachableLightedKeyboardOutput();
+        var guidance = new LightedKeyboardGuidance(output);
+        var settings = new LightedKeyboardSettings(Enabled: true, MidiChannel: 4);
+        var target = new PracticeTarget(ChartTime.Zero, new byte[] { 60 });
+        guidance.Update(settings, PracticeMode.WaitForNotes, target);
+
+        guidance.Clear();
+        output.Attached = true;
+        guidance.Update(settings, PracticeMode.WaitForNotes, target);
+
+        Assert.Equal(
+            new LightedKeyboardMessage(LightedKeyboardMessageKind.NoteOn, 4, 60, 1),
+            Assert.Single(output.Messages));
+    }
+
+    [Fact]
+    public void ClearContinuesAfterAnOutputFailureAndResetsTheTarget()
+    {
+        var output = new RecordingLightedKeyboardOutput();
+        var guidance = new LightedKeyboardGuidance(output);
+        var settings = new LightedKeyboardSettings(Enabled: true, MidiChannel: 4);
+        var target = new PracticeTarget(ChartTime.Zero, new byte[] { 60, 64 });
+        guidance.Update(settings, PracticeMode.WaitForNotes, target);
+        output.Messages.Clear();
+        output.FailNextSend = true;
+
+        guidance.Clear();
+        guidance.Update(settings, PracticeMode.WaitForNotes, target);
+
+        Assert.Equal(
+            new[]
+            {
+                new LightedKeyboardMessage(LightedKeyboardMessageKind.NoteOff, 4, 64, 0),
+                new LightedKeyboardMessage(LightedKeyboardMessageKind.NoteOn, 4, 60, 1),
+                new LightedKeyboardMessage(LightedKeyboardMessageKind.NoteOn, 4, 64, 1)
+            },
+            output.Messages);
+    }
+
+    [Fact]
     public void PlayInTimeShowsTheNextTarget()
     {
         var output = new RecordingLightedKeyboardOutput();
@@ -173,10 +215,29 @@ public sealed class LightedKeyboardGuidanceTests
     private sealed class RecordingLightedKeyboardOutput : ILightedKeyboardOutput
     {
         public List<LightedKeyboardMessage> Messages { get; } = new();
+        public bool FailNextSend { get; set; }
 
         public void Send(LightedKeyboardMessage message)
         {
+            if (FailNextSend)
+            {
+                FailNextSend = false;
+                throw new InvalidOperationException("The output device is unavailable.");
+            }
+
             Messages.Add(message);
+        }
+    }
+
+    private sealed class AttachableLightedKeyboardOutput : ILightedKeyboardOutput
+    {
+        public bool Attached { get; set; }
+        public List<LightedKeyboardMessage> Messages { get; } = new();
+
+        public void Send(LightedKeyboardMessage message)
+        {
+            if (Attached)
+                Messages.Add(message);
         }
     }
 }

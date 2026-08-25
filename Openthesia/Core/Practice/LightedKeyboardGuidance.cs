@@ -74,17 +74,25 @@ internal sealed class LightedKeyboardGuidance
         if (_litMidiChannel is not { } midiChannel)
             return;
 
-        foreach (var pitch in _litPitches)
-        {
-            _output.Send(new LightedKeyboardMessage(
-                LightedKeyboardMessageKind.NoteOff,
-                midiChannel,
-                pitch,
-                Velocity: 0));
-        }
-
+        var litPitches = _litPitches;
         _litMidiChannel = null;
         _litTargetOnset = null;
         _litPitches = Array.Empty<byte>();
+
+        foreach (var pitch in litPitches)
+        {
+            try
+            {
+                _output.Send(new LightedKeyboardMessage(
+                    LightedKeyboardMessageKind.NoteOff,
+                    midiChannel,
+                    pitch,
+                    Velocity: 0));
+            }
+            catch (Exception)
+            {
+                // A faulted device must not prevent the remaining cleanup or a later reconnect.
+            }
+        }
     }
 }
