@@ -22,6 +22,8 @@ public class SoundFontPlayer
 
     private static string _activeSoundFont = string.Empty;
     public static string ActiveSoundFont => _activeSoundFont;
+    private static string _activeSoundFontPath = string.Empty;
+    public static string ActiveSoundFontPath => _activeSoundFontPath;
 
     // stores loaded soundfonts and their path
     private static Dictionary<string, SoundFont> _soundFontsPool = new();
@@ -89,6 +91,7 @@ public class SoundFontPlayer
     {
         MidiPlayer.SoundFontEngine = new SoundFontPlayer(soundFontPath, sampleRate);
         _activeSoundFont = Path.GetFileNameWithoutExtension(soundFontPath);
+        _activeSoundFontPath = Path.GetFullPath(soundFontPath);
     }
 
     public void PlayNote(int channel, int noteNumber, int velocity)

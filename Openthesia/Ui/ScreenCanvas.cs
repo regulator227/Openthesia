@@ -4,11 +4,13 @@ using Melanchall.DryWetMidi.Common;
 using Melanchall.DryWetMidi.Core;
 using Melanchall.DryWetMidi.Interaction;
 using Openthesia.Core;
+using Openthesia.Core.Accessibility;
 using Openthesia.Core.Midi;
 using Openthesia.Core.SoundFonts;
 using Openthesia.Enums;
 using Openthesia.Settings;
 using Openthesia.Ui.Helpers;
+using Openthesia.Ui.Accessibility;
 using System.Numerics;
 using Veldrid;
 using ScreenRecorderLib;
@@ -32,6 +34,25 @@ public class ScreenCanvas
     private static bool _comboPlaybackSpeed;
     private static bool _comboSoundFont;
     private static bool _comboPlugins;
+    private static bool _openViewOptionsFromAutomation;
+    private static bool _openHandColorsFromAutomation;
+    private static bool _focusViewOptionsFirstControl;
+    private static bool _focusHandColorsFirstControl;
+    private static bool _focusPracticeToolsFirstControl;
+    private static bool _viewOptionsWasOpen;
+    private static bool _handColorsWasOpen;
+    private static bool _practiceToolsWasOpen;
+    private static bool _closeViewOptionsForPracticeTools;
+    private static bool _openPluginControlsFromAutomation;
+    private static bool _closePluginControlsFromAutomation;
+    private static bool _focusPluginControlsFirstControl;
+    private static bool _pluginControlsWasOpen;
+    private const long SoundFontCatalogRefreshMilliseconds = 2000;
+    private static readonly object SoundFontCatalogGate = new();
+    private static IReadOnlyList<string> _availableSoundFonts = Array.Empty<string>();
+    private static string _soundFontFoldersSignature = string.Empty;
+    private static long _soundFontCatalogRefreshedAt;
+    private static bool _soundFontCatalogRefreshInProgress;
 
     private static Vector2 _rectStart;
     private static Vector2 _rectEnd;
@@ -911,6 +932,10 @@ public class ScreenCanvas
 
             if (IsPracticeMode && _showPracticeTools)
                 DrawPracticeTools();
+
+            if (_practiceToolsWasOpen && !_showPracticeTools)
+                UiAutomationRuntime.Coordinator.RequestFocus("practice.view-options");
+            _practiceToolsWasOpen = IsPracticeMode && _showPracticeTools;
         }
     }
 
@@ -1009,6 +1034,15 @@ public class ScreenCanvas
             ImGui.SeparatorText("Practice Status");
             foreach (var line in lines)
                 ImGui.TextWrapped(line);
+            var statusValue = string.Join(" | ", lines);
+            ImGuiAccessibility.Text(
+                "practice.status",
+                "Practice Status",
+                statusValue,
+                "Current mode, playback state, target pitch and octave, required hand, feedback, navigation, and completion results.",
+                snapshot.State == PracticeSessionState.Completed
+                    ? AccessibilityLiveSetting.Assertive
+                    : AccessibilityLiveSetting.Polite);
         }
         ImGui.EndChild();
         ImGui.PopStyleColor();
@@ -1045,6 +1079,12 @@ public class ScreenCanvas
             return;
         }
 
+        if (_focusPracticeToolsFirstControl)
+        {
+            UiAutomationRuntime.Coordinator.RequestFocus("practice.tools.mode");
+            _focusPracticeToolsFirstControl = false;
+        }
+
         DrawActivePracticeSetupControls();
         ImGui.Separator();
         DrawPracticeTimingControls();
@@ -1058,7 +1098,21 @@ public class ScreenCanvas
         {
             ImGui.Separator();
             ImGui.TextWrapped(warning);
+            ImGuiAccessibility.Text(
+                "practice.tools.status",
+                "Practice tools status",
+                warning,
+                liveSetting: AccessibilityLiveSetting.Polite);
         }
+        ImGui.Separator();
+        var closeInvoked = ImGui.Button("Close Practice tools");
+        if (closeInvoked)
+            _showPracticeTools = false;
+        ImGuiAccessibility.Button(
+            "practice.tools.close",
+            "Close Practice tools",
+            () => _showPracticeTools = false,
+            invoked: closeInvoked);
         ImGui.End();
     }
 
@@ -1069,80 +1123,65 @@ public class ScreenCanvas
             return;
 
         ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(230)).X);
-        if (ImGui.BeginCombo(
-                "Mode##ActivePracticeMode",
-                PracticeModeLabel(preferences.Mode)))
-        {
-            foreach (var mode in Enum.GetValues<PracticeMode>())
-            {
-                if (ImGui.Selectable(PracticeModeLabel(mode), mode == preferences.Mode))
-                {
-                    _practiceToolsWarning = MidiPracticeSession.UpdatePreferences(
-                        preferences with { Mode = mode });
-                }
-            }
-            ImGui.EndCombo();
-        }
+        ImGuiAccessibility.ComboBox(
+            "practice.tools.mode",
+            "Practice Mode",
+            preferences.Mode,
+            Enum.GetValues<PracticeMode>().Select(mode => (
+                $"practice.tools.mode.{mode.ToString().ToLowerInvariant()}",
+                PracticeModeLabel(mode),
+                mode)),
+            mode => _practiceToolsWarning = MidiPracticeSession.UpdatePreferences(
+                (MidiPracticeSession.Preferences ?? preferences) with { Mode = mode }),
+            "Changing setup starts a fresh comparable Practice Session.");
 
         preferences = MidiPracticeSession.Preferences ?? preferences;
         if (ImGui.GetContentRegionAvail().X >= ImGuiUtils.FixedSize(new Vector2(250)).X)
             ImGui.SameLine();
         ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(230)).X);
-        if (ImGui.BeginCombo(
-                "Required Hands##ActivePracticeHands",
-                preferences.RequiredHands.ToString()))
-        {
-            foreach (var hands in Enum.GetValues<RequiredHands>())
-            {
-                if (ImGui.Selectable(hands.ToString(), hands == preferences.RequiredHands))
-                {
-                    _practiceToolsWarning = MidiPracticeSession.UpdatePreferences(
-                        preferences.WithRequiredHands(hands));
-                }
-            }
-            ImGui.EndCombo();
-        }
+        ImGuiAccessibility.ComboBox(
+            "practice.tools.required-hands",
+            "Required Hands",
+            preferences.RequiredHands,
+            Enum.GetValues<RequiredHands>().Select(hands => (
+                $"practice.tools.required-hands.{hands.ToString().ToLowerInvariant()}",
+                hands.ToString(),
+                hands)),
+            hands => _practiceToolsWarning = MidiPracticeSession.UpdatePreferences(
+                (MidiPracticeSession.Preferences ?? preferences).WithRequiredHands(hands)));
 
         preferences = MidiPracticeSession.Preferences ?? preferences;
         ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(230)).X);
-        if (ImGui.BeginCombo(
-                "Tempo##ActivePracticeTempo",
-                $"{preferences.TempoRatio:0.##}x"))
-        {
-            foreach (var tempoRatio in new[] { 0.25m, 0.5m, 0.75m, 1m, 1.25m, 1.5m, 2m })
-            {
-                if (ImGui.Selectable(
-                        $"{tempoRatio:0.##}x",
-                        tempoRatio == preferences.TempoRatio))
-                {
-                    _practiceToolsWarning = MidiPracticeSession.UpdatePreferences(
-                        preferences with { TempoRatio = tempoRatio });
-                }
-            }
-            ImGui.EndCombo();
-        }
+        var tempoOptions = new[] { 0.25m, 0.5m, 0.75m, 1m, 1.25m, 1.5m, 2m };
+        ImGuiAccessibility.ComboBox(
+            "practice.tools.tempo",
+            "Tempo",
+            preferences.TempoRatio,
+            tempoOptions.Select(tempoRatio => (
+                $"practice.tools.tempo.{tempoRatio.ToString(System.Globalization.CultureInfo.InvariantCulture).Replace('.', '-')}",
+                $"{tempoRatio:0.##}x",
+                tempoRatio)),
+            tempoRatio => _practiceToolsWarning = MidiPracticeSession.UpdatePreferences(
+                (MidiPracticeSession.Preferences ?? preferences) with { TempoRatio = tempoRatio }));
 
         preferences = MidiPracticeSession.Preferences ?? preferences;
         if (ImGui.GetContentRegionAvail().X >= ImGuiUtils.FixedSize(new Vector2(250)).X)
             ImGui.SameLine();
         ImGui.BeginDisabled(preferences.RequiredHands == RequiredHands.Both);
+        var accompanimentEnabled = preferences.RequiredHands != RequiredHands.Both;
         ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(230)).X);
-        if (ImGui.BeginCombo(
-                "Accompaniment##ActivePracticeAccompaniment",
-                preferences.Accompaniment.ToString()))
-        {
-            foreach (var accompaniment in Enum.GetValues<Accompaniment>())
-            {
-                if (ImGui.Selectable(
-                        accompaniment.ToString(),
-                        accompaniment == preferences.Accompaniment))
-                {
-                    _practiceToolsWarning = MidiPracticeSession.UpdatePreferences(
-                        preferences with { Accompaniment = accompaniment });
-                }
-            }
-            ImGui.EndCombo();
-        }
+        ImGuiAccessibility.ComboBox(
+            "practice.tools.accompaniment",
+            "Accompaniment",
+            preferences.Accompaniment,
+            Enum.GetValues<Accompaniment>().Select(accompaniment => (
+                $"practice.tools.accompaniment.{accompaniment.ToString().ToLowerInvariant()}",
+                accompaniment.ToString(),
+                accompaniment)),
+            accompaniment => _practiceToolsWarning = MidiPracticeSession.UpdatePreferences(
+                (MidiPracticeSession.Preferences ?? preferences) with { Accompaniment = accompaniment }),
+            "Choose whether Chart notes outside the Required Hands play automatically.",
+            accompanimentEnabled);
         ImGui.EndDisabled();
         ImGui.TextWrapped("Changing setup or range starts a fresh comparable Practice Session.");
     }
@@ -1154,23 +1193,16 @@ public class ScreenCanvas
             return;
 
         ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(180)).X);
-        if (ImGui.BeginCombo(
-                "Count-in##ActivePracticeCountIn",
-                preferences.CountInBeats == 0
-                    ? "Off"
-                    : $"{preferences.CountInBeats} beats"))
-        {
-            foreach (var beats in PracticePreferences.SupportedCountInBeats)
-            {
-                var label = beats == 0 ? "Off" : $"{beats} beats";
-                if (ImGui.Selectable(label, beats == preferences.CountInBeats))
-                {
-                    _practiceToolsWarning = MidiPracticeSession.UpdatePreferences(
-                        preferences with { CountInBeats = beats });
-                }
-            }
-            ImGui.EndCombo();
-        }
+        ImGuiAccessibility.ComboBox(
+            "practice.tools.count-in",
+            "Count-in",
+            preferences.CountInBeats,
+            PracticePreferences.SupportedCountInBeats.Select(beats => (
+                $"practice.tools.count-in.{beats}",
+                beats == 0 ? "Off" : $"{beats} beats",
+                beats)),
+            beats => _practiceToolsWarning = MidiPracticeSession.UpdatePreferences(
+                (MidiPracticeSession.Preferences ?? preferences) with { CountInBeats = beats }));
 
         preferences = MidiPracticeSession.Preferences ?? preferences;
         var metronomeEnabled = preferences.MetronomeEnabled;
@@ -1179,6 +1211,16 @@ public class ScreenCanvas
             _practiceToolsWarning = MidiPracticeSession.UpdatePreferences(
                 preferences with { MetronomeEnabled = metronomeEnabled });
         }
+        ImGuiAccessibility.Toggle(
+            "practice.tools.metronome",
+            "Metronome",
+            preferences.MetronomeEnabled,
+            () => _practiceToolsWarning = MidiPracticeSession.UpdatePreferences(
+                (MidiPracticeSession.Preferences ?? preferences) with
+                {
+                    MetronomeEnabled = !(MidiPracticeSession.Preferences ?? preferences).MetronomeEnabled
+                }),
+            "Play metronome clicks while the Chart is playing.");
 
         preferences = MidiPracticeSession.Preferences ?? preferences;
         var countInOnLoopRepeat = preferences.CountInOnLoopRepeat;
@@ -1187,11 +1229,29 @@ public class ScreenCanvas
             _practiceToolsWarning = MidiPracticeSession.UpdatePreferences(
                 preferences with { CountInOnLoopRepeat = countInOnLoopRepeat });
         }
+        ImGuiAccessibility.Toggle(
+            "practice.tools.count-in-on-loop-repeat",
+            "Count in on every loop pass",
+            preferences.CountInOnLoopRepeat,
+            () => _practiceToolsWarning = MidiPracticeSession.UpdatePreferences(
+                (MidiPracticeSession.Preferences ?? preferences) with
+                {
+                    CountInOnLoopRepeat = !(MidiPracticeSession.Preferences ?? preferences).CountInOnLoopRepeat
+                }));
         ImGui.TextWrapped(
             "Count-in clicks always sound. The metronome setting controls only the clicks while the Chart is playing.");
-        ImGui.BeginDisabled(!MidiPracticeSession.CanRestartAfterError);
-        if (ImGui.Button("Restart after error"))
+        var canRestartAfterError = MidiPracticeSession.CanRestartAfterError;
+        ImGui.BeginDisabled(!canRestartAfterError);
+        var restartInvoked = ImGui.Button("Restart after error");
+        if (restartInvoked)
             _practiceToolsWarning = MidiPracticeSession.RestartAfterError();
+        ImGuiAccessibility.Button(
+            "practice.tools.restart-after-error",
+            "Restart after error",
+            () => _practiceToolsWarning = MidiPracticeSession.RestartAfterError(),
+            "Restart the current Practice range after an error.",
+            enabled: canRestartAfterError,
+            invoked: restartInvoked);
         ImGui.EndDisabled();
     }
 
@@ -1204,42 +1264,75 @@ public class ScreenCanvas
             : null;
 
         ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(280)).X);
-        if (ImGui.BeginCombo(
-                "Saved loop##PracticeLoop",
-                selectedLoop?.Name ?? "New loop"))
-        {
-            if (ImGui.Selectable("New loop", _editingLoopId is null))
-                BeginNewLoopDraft();
-            foreach (var loop in navigation.Loops.OrderBy(loop => loop.Range.Start))
+        var loopOptions = new[] { ("practice.tools.loop.new", "New loop", "new") }
+            .Concat(navigation.Loops.OrderBy(loop => loop.Range.Start).Select(loop => (
+                $"practice.tools.loop.{loop.Id:D}",
+                loop.Name,
+                loop.Id.ToString("D"))));
+        ImGuiAccessibility.ComboBox(
+            "practice.tools.loop",
+            "Saved loop",
+            selectedLoop?.Id.ToString("D") ?? "new",
+            loopOptions,
+            value =>
             {
-                if (ImGui.Selectable(loop.Name, loop.Id == _editingLoopId))
+                if (value == "new")
+                    BeginNewLoopDraft();
+                else if (Guid.TryParse(value, out var id) &&
+                         MidiPracticeSession.Navigation.Loops.FirstOrDefault(loop => loop.Id == id) is { } loop)
                     EditLoop(loop);
-            }
-            ImGui.EndCombo();
-        }
+            },
+            "Choose an existing loop to edit or begin a new loop.");
 
         ImGui.InputText("Name##PracticeLoopName", ref _practiceLoopName, 80);
-        if (ImGui.Button("Mark start at playhead"))
+        ImGuiAccessibility.Edit(
+            "practice.tools.loop.name",
+            "Loop name",
+            _practiceLoopName,
+            value => _practiceLoopName = value,
+            "Name the loop.");
+        void MarkLoopStart()
         {
             if (MidiPracticeSession.Snapshot is { } snapshot)
                 _loopStart = MidiPracticeSession.SnapToNearestBeat(snapshot.Position);
         }
+        var markStartInvoked = ImGui.Button("Mark start at playhead");
+        if (markStartInvoked)
+            MarkLoopStart();
+        ImGuiAccessibility.Button(
+            "practice.tools.loop.mark-start",
+            "Mark loop start at playhead",
+            MarkLoopStart,
+            invoked: markStartInvoked);
         if (ImGui.GetContentRegionAvail().X >= ImGuiUtils.FixedSize(new Vector2(180)).X)
             ImGui.SameLine();
-        if (ImGui.Button("End after playhead"))
+        void MarkLoopEnd()
         {
             if (MidiPracticeSession.Snapshot is { } snapshot)
                 _loopEnd = MidiPracticeSession.SnapToNextBeatBoundary(snapshot.Position);
         }
+        var markEndInvoked = ImGui.Button("End after playhead");
+        if (markEndInvoked)
+            MarkLoopEnd();
+        ImGuiAccessibility.Button(
+            "practice.tools.loop.mark-end",
+            "End loop after playhead",
+            MarkLoopEnd,
+            invoked: markEndInvoked);
 
-        ImGui.Text(
-            $"Range: {FormatChartTime(_loopStart)} – {FormatChartTime(_loopEnd)}");
+        var loopRange = $"Range: {FormatChartTime(_loopStart)} – {FormatChartTime(_loopEnd)}";
+        ImGui.Text(loopRange);
+        ImGuiAccessibility.Text(
+            "practice.tools.loop.range",
+            "Loop range",
+            loopRange);
         var validRange = _loopStart is { } start &&
                          _loopEnd is { } end &&
                          end.CompareTo(start) > 0;
-        ImGui.BeginDisabled(!validRange);
-        if (ImGui.Button(_editingLoopId is null ? "Save loop" : "Save changes"))
+        void SaveLoop()
         {
+            if (!validRange)
+                return;
             var id = _editingLoopId ?? Guid.NewGuid();
             _practiceToolsWarning = MidiPracticeSession.SaveLoop(
                 id,
@@ -1248,6 +1341,18 @@ public class ScreenCanvas
             if (_practiceToolsWarning is null)
                 _editingLoopId = id;
         }
+        ImGui.BeginDisabled(!validRange);
+        var saveLoopInvoked = ImGui.Button(
+            _editingLoopId is null ? "Save loop" : "Save changes");
+        if (saveLoopInvoked)
+            SaveLoop();
+        ImGuiAccessibility.Button(
+            "practice.tools.loop.save",
+            _editingLoopId is null ? "Save loop" : "Save loop changes",
+            SaveLoop,
+            "Save this loop range.",
+            enabled: validRange,
+            invoked: saveLoopInvoked);
         ImGui.EndDisabled();
 
         if (selectedLoop is not null)
@@ -1260,18 +1365,40 @@ public class ScreenCanvas
                 _practiceToolsWarning = MidiPracticeSession.SetActiveLoop(
                     isActive ? null : selectedLoop.Id);
             }
+            ImGuiAccessibility.Toggle(
+                "practice.tools.loop.enabled",
+                "Enabled loop",
+                isActive,
+                () => _practiceToolsWarning = MidiPracticeSession.SetActiveLoop(
+                    isActive ? null : selectedLoop.Id),
+                $"Enable or disable {selectedLoop.Name}.");
             if (ImGui.GetContentRegionAvail().X >= ImGuiUtils.FixedSize(new Vector2(110)).X)
                 ImGui.SameLine();
-            if (ImGui.Button("Go to start"))
+            var goToLoopStartInvoked = ImGui.Button("Go to start");
+            if (goToLoopStartInvoked)
                 MidiPracticeSession.GoToLoopStart(selectedLoop.Id);
+            ImGuiAccessibility.Button(
+                "practice.tools.loop.go-to-start",
+                "Go to loop start",
+                () => MidiPracticeSession.GoToLoopStart(selectedLoop.Id),
+                invoked: goToLoopStartInvoked);
             if (ImGui.GetContentRegionAvail().X >= ImGuiUtils.FixedSize(new Vector2(110)).X)
                 ImGui.SameLine();
-            if (ImGui.Button("Delete loop"))
+            void DeleteLoop()
             {
                 _practiceToolsWarning = MidiPracticeSession.DeleteLoop(selectedLoop.Id);
                 if (_practiceToolsWarning is null)
                     BeginNewLoopDraft();
             }
+            var deleteLoopInvoked = ImGui.Button("Delete loop");
+            if (deleteLoopInvoked)
+                DeleteLoop();
+            ImGuiAccessibility.Button(
+                "practice.tools.loop.delete",
+                "Delete loop",
+                DeleteLoop,
+                $"Delete {selectedLoop.Name}.",
+                invoked: deleteLoopInvoked);
         }
 
         if (!validRange && (_loopStart is not null || _loopEnd is not null))
@@ -1288,28 +1415,40 @@ public class ScreenCanvas
             : null;
 
         ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(280)).X);
-        if (ImGui.BeginCombo(
-                "Saved bookmark##PracticeBookmark",
-                selectedBookmark?.Name ?? "New bookmark"))
-        {
-            if (ImGui.Selectable("New bookmark", _editingBookmarkId is null))
+        var bookmarkOptions = new[] { ("practice.tools.bookmark.new", "New bookmark", "new") }
+            .Concat(navigation.Bookmarks.OrderBy(bookmark => bookmark.Position).Select(bookmark => (
+                $"practice.tools.bookmark.{bookmark.Id:D}",
+                bookmark.Name,
+                bookmark.Id.ToString("D"))));
+        ImGuiAccessibility.ComboBox(
+            "practice.tools.bookmark",
+            "Saved bookmark",
+            selectedBookmark?.Id.ToString("D") ?? "new",
+            bookmarkOptions,
+            value =>
             {
-                _editingBookmarkId = null;
-                _practiceBookmarkName = "Bookmark";
-            }
-            foreach (var bookmark in navigation.Bookmarks.OrderBy(bookmark => bookmark.Position))
-            {
-                if (ImGui.Selectable(bookmark.Name, bookmark.Id == _editingBookmarkId))
+                if (value == "new")
+                {
+                    _editingBookmarkId = null;
+                    _practiceBookmarkName = "Bookmark";
+                }
+                else if (Guid.TryParse(value, out var id) &&
+                         MidiPracticeSession.Navigation.Bookmarks.FirstOrDefault(bookmark => bookmark.Id == id) is { } bookmark)
                 {
                     _editingBookmarkId = bookmark.Id;
                     _practiceBookmarkName = bookmark.Name;
                 }
-            }
-            ImGui.EndCombo();
-        }
+            },
+            "Choose an existing bookmark to edit or begin a new bookmark.");
 
         ImGui.InputText("Name##PracticeBookmarkName", ref _practiceBookmarkName, 80);
-        if (selectedBookmark is null && ImGui.Button("Save at playhead"))
+        ImGuiAccessibility.Edit(
+            "practice.tools.bookmark.name",
+            "Bookmark name",
+            _practiceBookmarkName,
+            value => _practiceBookmarkName = value,
+            "Name the bookmark.");
+        void SaveBookmarkAtPlayhead()
         {
             if (MidiPracticeSession.Snapshot is { } snapshot)
             {
@@ -1322,19 +1461,36 @@ public class ScreenCanvas
                     _editingBookmarkId = id;
             }
         }
+        var saveBookmarkInvoked = selectedBookmark is null &&
+                                  ImGui.Button("Save at playhead");
+        if (saveBookmarkInvoked)
+            SaveBookmarkAtPlayhead();
+        if (selectedBookmark is null)
+        {
+            ImGuiAccessibility.Button(
+                "practice.tools.bookmark.save",
+                "Save bookmark at playhead",
+                SaveBookmarkAtPlayhead,
+                invoked: saveBookmarkInvoked);
+        }
 
         if (selectedBookmark is not null)
         {
-            if (ImGui.Button("Rename bookmark"))
-            {
-                _practiceToolsWarning = MidiPracticeSession.SaveBookmark(
-                    selectedBookmark.Id,
-                    _practiceBookmarkName,
-                    selectedBookmark.Position);
-            }
+            void RenameBookmark() => _practiceToolsWarning = MidiPracticeSession.SaveBookmark(
+                selectedBookmark.Id,
+                _practiceBookmarkName,
+                selectedBookmark.Position);
+            var renameBookmarkInvoked = ImGui.Button("Rename bookmark");
+            if (renameBookmarkInvoked)
+                RenameBookmark();
+            ImGuiAccessibility.Button(
+                "practice.tools.bookmark.rename",
+                "Rename bookmark",
+                RenameBookmark,
+                invoked: renameBookmarkInvoked);
             if (ImGui.GetContentRegionAvail().X >= ImGuiUtils.FixedSize(new Vector2(160)).X)
                 ImGui.SameLine();
-            if (ImGui.Button("Move to playhead"))
+            void MoveBookmarkToPlayhead()
             {
                 if (MidiPracticeSession.Snapshot is { } snapshot)
                 {
@@ -1344,26 +1500,58 @@ public class ScreenCanvas
                         snapshot.Position);
                 }
             }
+            var moveBookmarkInvoked = ImGui.Button("Move to playhead");
+            if (moveBookmarkInvoked)
+                MoveBookmarkToPlayhead();
+            ImGuiAccessibility.Button(
+                "practice.tools.bookmark.move",
+                "Move bookmark to playhead",
+                MoveBookmarkToPlayhead,
+                invoked: moveBookmarkInvoked);
         }
 
-        ImGui.BeginDisabled(navigation.Bookmarks.Count == 0);
-        if (ImGui.Button("Previous bookmark"))
+        var hasBookmarks = navigation.Bookmarks.Count > 0;
+        ImGui.BeginDisabled(!hasBookmarks);
+        var previousBookmarkInvoked = ImGui.Button("Previous bookmark");
+        if (previousBookmarkInvoked)
             MidiPracticeSession.GoToBookmark(PracticeNavigationDirection.Previous);
+        ImGuiAccessibility.Button(
+            "practice.tools.bookmark.previous",
+            "Previous bookmark",
+            () => MidiPracticeSession.GoToBookmark(PracticeNavigationDirection.Previous),
+            "Go to the previous bookmark in Chart order.",
+            enabled: hasBookmarks,
+            invoked: previousBookmarkInvoked);
         if (ImGui.GetContentRegionAvail().X >= ImGuiUtils.FixedSize(new Vector2(160)).X)
             ImGui.SameLine();
-        if (ImGui.Button("Next bookmark"))
+        var nextBookmarkInvoked = ImGui.Button("Next bookmark");
+        if (nextBookmarkInvoked)
             MidiPracticeSession.GoToBookmark(PracticeNavigationDirection.Next);
+        ImGuiAccessibility.Button(
+            "practice.tools.bookmark.next",
+            "Next bookmark",
+            () => MidiPracticeSession.GoToBookmark(PracticeNavigationDirection.Next),
+            "Go to the next bookmark in Chart order.",
+            enabled: hasBookmarks,
+            invoked: nextBookmarkInvoked);
         ImGui.EndDisabled();
 
         if (selectedBookmark is not null)
         {
             if (ImGui.GetContentRegionAvail().X >= ImGuiUtils.FixedSize(new Vector2(150)).X)
                 ImGui.SameLine();
-            if (ImGui.Button("Go to bookmark"))
+            var goToBookmarkInvoked = ImGui.Button("Go to bookmark");
+            if (goToBookmarkInvoked)
                 MidiPracticeSession.GoToBookmark(selectedBookmark.Id);
+            ImGuiAccessibility.Button(
+                "practice.tools.bookmark.go-to",
+                "Go to bookmark",
+                () => MidiPracticeSession.GoToBookmark(selectedBookmark.Id),
+                $"Go to {selectedBookmark.Name}.",
+                invoked: goToBookmarkInvoked);
             if (ImGui.GetContentRegionAvail().X >= ImGuiUtils.FixedSize(new Vector2(140)).X)
                 ImGui.SameLine();
-            if (ImGui.Button("Delete bookmark"))
+            void DeleteBookmark()
             {
                 _practiceToolsWarning = MidiPracticeSession.DeleteBookmark(selectedBookmark.Id);
                 if (_practiceToolsWarning is null)
@@ -1372,6 +1560,15 @@ public class ScreenCanvas
                     _practiceBookmarkName = "Bookmark";
                 }
             }
+            var deleteBookmarkInvoked = ImGui.Button("Delete bookmark");
+            if (deleteBookmarkInvoked)
+                DeleteBookmark();
+            ImGuiAccessibility.Button(
+                "practice.tools.bookmark.delete",
+                "Delete bookmark",
+                DeleteBookmark,
+                $"Delete {selectedBookmark.Name}.",
+                invoked: deleteBookmarkInvoked);
         }
 
         ImGui.TextWrapped("Going to a bookmark outside the enabled loop disables the loop and starts an assisted attempt there.");
@@ -1469,11 +1666,21 @@ public class ScreenCanvas
         ImGuiTheme.Style.Colors[(int)ImGuiCol.SliderGrab] = progress;
         ImGuiTheme.Style.Colors[(int)ImGuiCol.SliderGrabActive] = progress;
 
-        if (ImGui.SliderFloat("##Progress slider", ref MidiPlayer.Seconds, 0, (float)MidiFileData.MidiFile.GetDuration<MetricTimeSpan>().TotalSeconds, "%.1f",
+        var durationSeconds = (float)MidiFileData.MidiFile.GetDuration<MetricTimeSpan>().TotalSeconds;
+        if (ImGui.SliderFloat("##Progress slider", ref MidiPlayer.Seconds, 0, durationSeconds, "%.1f",
             ImGuiSliderFlags.NoRoundToFormat | ImGuiSliderFlags.AlwaysClamp | ImGuiSliderFlags.NoInput))
         {
             SeekPlaybackTo(MidiPlayer.Seconds);
         }
+        ImGuiAccessibility.Slider(
+            IsPracticeMode ? "practice.position" : "performance-visualization.position",
+            "Playback position",
+            MidiPlayer.Seconds,
+            0,
+            durationSeconds,
+            0.25,
+            value => SeekPlaybackTo((float)value),
+            "Seek to a time in the Chart.");
         _isProgressBarActive = ImGui.IsItemActive();
         _isProgressBarHovered = ImGui.IsItemHovered();
         if (_isProgressBarActive && ImGui.IsMouseDragging(ImGuiMouseButton.Left))
@@ -1502,6 +1709,58 @@ public class ScreenCanvas
 
     private static void DrawPlaybackControls()
     {
+        void Play()
+        {
+            if (IsPracticeMode)
+                MidiPracticeSession.Resume();
+            else
+            {
+                MidiPlayer.Playback.Start();
+                MidiPlayer.StartTimer();
+            }
+        }
+
+        void Pause()
+        {
+            if (IsPracticeMode)
+                MidiPracticeSession.Pause();
+            else
+            {
+                MidiPlayer.Playback.Stop();
+                MidiPlayer.IsTimerRunning = false;
+            }
+        }
+
+        void Stop()
+        {
+            MidiPlayer.SoundFontEngine?.StopAllNote(0);
+            if (IsPracticeMode)
+                MidiPracticeSession.Pause();
+            else
+            {
+                MidiPlayer.Playback.Stop();
+                MidiPlayer.Playback.MoveToStart();
+                MidiPlayer.IsTimerRunning = false;
+                MidiPlayer.Timer = 0;
+            }
+        }
+
+        void ToggleRecording()
+        {
+            switch (ScreenRecorder.Status)
+            {
+                case RecorderStatus.Idle:
+                    ScreenRecorder.StartRecording();
+                    if (CoreSettings.VideoRecStartsPlayback)
+                        Play();
+                    break;
+                case RecorderStatus.Recording:
+                    ScreenRecorder.EndRecording();
+                    Stop();
+                    break;
+            }
+        }
+
         var display = ImGui.GetIO().DisplaySize;
         var margin = Math.Max(8f, ImGuiUtils.FixedSize(new Vector2(24)).X);
         var controlsWidth = Math.Min(
@@ -1527,81 +1786,55 @@ public class ScreenCanvas
             var playLabel = MidiPlayer.IsTimerRunning
                 ? $"{FontAwesome6.Play} Playing"
                 : $"{FontAwesome6.Play} Play";
-            if (ImGui.Button(playLabel, buttonSize))
-            {
-                if (IsPracticeMode)
-                    MidiPracticeSession.Resume();
-                else
-                {
-                    MidiPlayer.Playback.Start();
-                    MidiPlayer.StartTimer();
-                }
-            }
+            var playInvoked = ImGui.Button(playLabel, buttonSize);
+            if (playInvoked)
+                Play();
+            ImGuiAccessibility.Button(
+                IsPracticeMode ? "practice.play" : "performance-visualization.play",
+                "Play",
+                Play,
+                "Start or resume playback.",
+                invoked: playInvoked);
             ImGui.SameLine();
             // PAUSE BUTTON
-            if (ImGui.Button($"{FontAwesome6.Pause} Pause", buttonSize))
-            {
-                if (IsPracticeMode)
-                    MidiPracticeSession.Pause();
-                else
-                {
-                    MidiPlayer.Playback.Stop();
-                    MidiPlayer.IsTimerRunning = false;
-                }
-            }
+            var pauseInvoked = ImGui.Button($"{FontAwesome6.Pause} Pause", buttonSize);
+            if (pauseInvoked)
+                Pause();
+            ImGuiAccessibility.Button(
+                IsPracticeMode ? "practice.pause" : "performance-visualization.pause",
+                "Pause",
+                Pause,
+                "Pause playback without changing the current position.",
+                invoked: pauseInvoked);
             ImGui.SameLine();
             // STOP BUTTON
-            if (ImGui.Button($"{FontAwesome6.Stop} Stop", buttonSize) || IsMappedCommandPressed(PracticeCommand.ClearInput))
-            {
-                MidiPlayer.SoundFontEngine?.StopAllNote(0);
-                if (IsPracticeMode)
-                    MidiPracticeSession.Pause();
-                else
-                {
-                    MidiPlayer.Playback.Stop();
-                    MidiPlayer.Playback.MoveToStart();
-                    MidiPlayer.IsTimerRunning = false;
-                    MidiPlayer.Timer = 0;
-                }
-            }
+            var stopInvoked = ImGui.Button($"{FontAwesome6.Stop} Stop", buttonSize) ||
+                              IsMappedCommandPressed(PracticeCommand.ClearInput);
+            if (stopInvoked)
+                Stop();
+            ImGuiAccessibility.Button(
+                IsPracticeMode ? "practice.stop" : "performance-visualization.stop",
+                "Stop",
+                Stop,
+                IsPracticeMode
+                    ? "Stop sounding notes and pause Practice."
+                    : "Stop playback and return to the start.",
+                invoked: stopInvoked);
             ImGui.SameLine();
             // RECORD SCREEN BUTTON
             var recordLabel = ScreenRecorder.Status == RecorderStatus.Recording
                 ? $"{FontAwesome6.Video} Recording"
                 : $"{FontAwesome6.Video} Record";
-            if (ImGui.Button(recordLabel, buttonSize)
-                || IsMappedCommandPressed(PracticeCommand.ToggleRecording))
-            {
-                switch (ScreenRecorder.Status)
-                {
-                    case RecorderStatus.Idle:
-                        ScreenRecorder.StartRecording();
-                        if (CoreSettings.VideoRecStartsPlayback)
-                        {
-                            if (IsPracticeMode)
-                                MidiPracticeSession.Resume();
-                            else
-                            {
-                                MidiPlayer.Playback.Start();
-                                MidiPlayer.StartTimer();
-                            }
-                        }
-                        break;
-                    case RecorderStatus.Recording:
-                        ScreenRecorder.EndRecording();
-                        MidiPlayer.SoundFontEngine?.StopAllNote(0);
-                        if (IsPracticeMode)
-                            MidiPracticeSession.Pause();
-                        else
-                        {
-                            MidiPlayer.Playback.Stop();
-                            MidiPlayer.Playback.MoveToStart();
-                            MidiPlayer.IsTimerRunning = false;
-                            MidiPlayer.Timer = 0;
-                        }
-                        break;
-                }
-            }
+            var recordInvoked = ImGui.Button(recordLabel, buttonSize) ||
+                                IsMappedCommandPressed(PracticeCommand.ToggleRecording);
+            if (recordInvoked)
+                ToggleRecording();
+            ImGuiAccessibility.Button(
+                IsPracticeMode ? "practice.record" : "performance-visualization.record",
+                ScreenRecorder.Status == RecorderStatus.Recording ? "Stop recording" : "Record screen",
+                ToggleRecording,
+                "Start or stop a video recording of this view.",
+                invoked: recordInvoked);
 
             ImGui.PopFont();
         }
@@ -1630,20 +1863,55 @@ public class ScreenCanvas
         var compact = display.X < ImGuiUtils.FixedSize(new Vector2(1000)).X;
         var top = CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(compact ? 120 : 50)).Y;
         var left = Math.Max(margin, display.X - panelWidth - margin);
+        var semanticPrefix = IsPracticeMode ? "practice" : "performance-visualization";
 
         ImGui.SetCursorScreenPos(new Vector2(left, top));
-        if (ImGui.Button("View options", new Vector2(panelWidth, ImGuiUtils.FixedSize(new Vector2(50)).Y)))
+        var openedViewOptionsFromAutomation = _openViewOptionsFromAutomation;
+        var viewOptionsInvoked = ImGui.Button(
+            "View options",
+            new Vector2(panelWidth, ImGuiUtils.FixedSize(new Vector2(50)).Y));
+        if (viewOptionsInvoked ||
+            openedViewOptionsFromAutomation)
+        {
+            _openViewOptionsFromAutomation = false;
+            _focusViewOptionsFirstControl = openedViewOptionsFromAutomation;
             ImGui.OpenPopup("View options menu");
+        }
+        ImGuiAccessibility.Button(
+            $"{semanticPrefix}.view-options",
+            "View options",
+            () => _openViewOptionsFromAutomation = true,
+            "Open note guidance and visualization options.",
+            invoked: viewOptionsInvoked);
 
         var menuOpen = ImGui.BeginPopup("View options menu");
         if (menuOpen)
         {
+            if (_closeViewOptionsForPracticeTools)
+            {
+                ImGui.CloseCurrentPopup();
+                _closeViewOptionsForPracticeTools = false;
+            }
             var popupWidth = ImGuiUtils.FixedSize(new Vector2(280)).X;
+            if (_focusViewOptionsFirstControl)
+            {
+                ImGui.SetKeyboardFocusHere();
+                _focusViewOptionsFirstControl = false;
+            }
             if (!IsEditMode && ImGui.Button(
                     $"Note direction: {(UpDirection ? "Up" : "Down")}",
                     new Vector2(popupWidth, 0)))
             {
                 SetUpDirection(!UpDirection);
+            }
+            if (!IsEditMode)
+            {
+                ImGuiAccessibility.Toggle(
+                    $"{semanticPrefix}.view.note-direction",
+                    "Notes move upward",
+                    UpDirection,
+                    () => SetUpDirection(!UpDirection),
+                    "Choose whether notes move up or down.");
             }
 
             if (ImGui.Button(
@@ -1652,17 +1920,24 @@ public class ScreenCanvas
             {
                 SetTextNotes(!ShowTextNotes);
             }
+            ImGuiAccessibility.Toggle(
+                $"{semanticPrefix}.view.note-labels",
+                "Note labels",
+                ShowTextNotes,
+                () => SetTextNotes(!ShowTextNotes),
+                "Show pitch, octave, or velocity text on notes.");
 
             ImGui.SetNextItemWidth(popupWidth);
-            if (ImGui.BeginCombo("Label content", NoteLabelName(TextType)))
-            {
-                foreach (var textType in Enum.GetValues<TextTypes>())
-                {
-                    if (ImGui.Selectable(NoteLabelName(textType), textType == TextType))
-                        SetTextType(textType);
-                }
-                ImGui.EndCombo();
-            }
+            ImGuiAccessibility.ComboBox(
+                $"{semanticPrefix}.view.label-content",
+                "Label content",
+                TextType,
+                Enum.GetValues<TextTypes>().Select(textType => (
+                    $"{semanticPrefix}.view.label-content.{textType.ToString().ToLowerInvariant()}",
+                    NoteLabelName(textType),
+                    textType)),
+                SetTextType,
+                "Choose the text shown on notes.");
 
             if (ImGui.Button(
                     $"Top bar: {(LockTopBar ? "Locked" : "Auto-hide")}",
@@ -1670,32 +1945,40 @@ public class ScreenCanvas
             {
                 SetLockTopBar(!LockTopBar);
             }
+            ImGuiAccessibility.Toggle(
+                $"{semanticPrefix}.view.lock-top-bar",
+                "Keep top bar visible",
+                LockTopBar,
+                () => SetLockTopBar(!LockTopBar));
 
             var isFullScreen = Program._window.WindowState == WindowState.BorderlessFullScreen;
+            void ToggleFullScreen() => Program._window.WindowState = isFullScreen
+                ? WindowState.Normal
+                : WindowState.BorderlessFullScreen;
             if (ImGui.Button(
                     isFullScreen ? "Exit full screen" : "Enter full screen",
                     new Vector2(popupWidth, 0)))
             {
-                Program._window.WindowState = isFullScreen
-                    ? WindowState.Normal
-                    : WindowState.BorderlessFullScreen;
+                ToggleFullScreen();
             }
+            ImGuiAccessibility.Toggle(
+                $"{semanticPrefix}.view.full-screen",
+                "Full screen",
+                isFullScreen,
+                ToggleFullScreen);
 
             ImGui.SetNextItemWidth(popupWidth);
-            if (ImGui.BeginCombo("Fall speed", $"{FallSpeed}", ImGuiComboFlags.HeightLarge))
-            {
-                _comboFallSpeed = true;
-                foreach (var speed in Enum.GetValues(typeof(FallSpeeds)))
-                {
-                    if (ImGui.Selectable(speed.ToString()))
-                        SetFallSpeed((FallSpeeds)speed);
-                }
-                ImGui.EndCombo();
-            }
-            else
-            {
-                _comboFallSpeed = false;
-            }
+            ImGuiAccessibility.ComboBox(
+                $"{semanticPrefix}.view.fall-speed",
+                "Fall speed",
+                FallSpeed,
+                Enum.GetValues<FallSpeeds>().Select(speed => (
+                    $"{semanticPrefix}.view.fall-speed.{speed.ToString().ToLowerInvariant()}",
+                    speed.ToString(),
+                    speed)),
+                SetFallSpeed,
+                "Choose how quickly notes move toward the keyboard.");
+            _comboFallSpeed = false;
 
             if (!IsPracticeMode)
             {
@@ -1715,9 +1998,22 @@ public class ScreenCanvas
                     _comboPlaybackSpeed = false;
                 }
             }
-            else if (ImGui.Button("Loops & bookmarks", new Vector2(popupWidth, 0)))
+            else
             {
-                _showPracticeTools = true;
+                var navigationToolsInvoked = ImGui.Button(
+                    "Loops & bookmarks",
+                    new Vector2(popupWidth, 0));
+                if (navigationToolsInvoked)
+                    OpenPracticeTools();
+                if (IsPracticeMode)
+                {
+                    ImGuiAccessibility.Button(
+                        "practice.navigation-tools",
+                        "Loops and bookmarks",
+                        OpenPracticeTools,
+                        "Open Practice setup, loop, and bookmark tools.",
+                        invoked: navigationToolsInvoked);
+                }
             }
             ImGui.EndPopup();
         }
@@ -1725,6 +2021,17 @@ public class ScreenCanvas
         {
             _comboFallSpeed = false;
             _comboPlaybackSpeed = false;
+        }
+
+        if (!menuOpen && _viewOptionsWasOpen && !_showPracticeTools)
+            UiAutomationRuntime.Coordinator.RequestFocus($"{semanticPrefix}.view-options");
+        _viewOptionsWasOpen = menuOpen;
+
+        void OpenPracticeTools()
+        {
+            _showPracticeTools = true;
+            _focusPracticeToolsFirstControl = true;
+            _closeViewOptionsForPracticeTools = true;
         }
     }
 
@@ -1753,11 +2060,10 @@ public class ScreenCanvas
         if (!showTopBar && !LockTopBar)
             return;
 
-        // BACK BUTTON
-        ImGui.PushFont(FontController.Font16_Icon16);
-        ImGui.BeginDisabled(ScreenRecorder.Status == RecorderStatus.Recording);
-        ImGui.SetCursorScreenPos(new(ImGuiUtils.FixedSize(new Vector2(25)).X, CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(50)).Y));
-        if (ImGui.Button($"{FontAwesome6.ArrowLeftLong} Back", ImGuiUtils.FixedSize(new Vector2(120, 50))) || IsMappedCommandPressed(PracticeCommand.Exit))
+        var semanticPrefix = IsPracticeMode
+            ? "practice"
+            : playMode ? "play-mode" : "performance-visualization";
+        void ExitView()
         {
             MidiPracticeSession.Deactivate();
             MidiPlayer.Playback?.Stop();
@@ -1767,6 +2073,25 @@ public class ScreenCanvas
             var route = playMode ? Enums.Windows.Home : Enums.Windows.MidiBrowser;
             WindowsManager.SetWindow(route);
         }
+
+        // BACK BUTTON
+        ImGui.PushFont(FontController.Font16_Icon16);
+        var canExit = ScreenRecorder.Status != RecorderStatus.Recording;
+        ImGui.BeginDisabled(!canExit);
+        ImGui.SetCursorScreenPos(new(ImGuiUtils.FixedSize(new Vector2(25)).X, CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(50)).Y));
+        var exitInvoked = ImGui.Button(
+                              $"{FontAwesome6.ArrowLeftLong} Back",
+                              ImGuiUtils.FixedSize(new Vector2(120, 50))) ||
+                          IsMappedCommandPressed(PracticeCommand.Exit);
+        if (exitInvoked)
+            ExitView();
+        ImGuiAccessibility.Button(
+            $"{semanticPrefix}.back",
+            "Back",
+            ExitView,
+            "Leave this view and return to the previous screen.",
+            enabled: canExit,
+            invoked: exitInvoked);
         ImGui.EndDisabled();
         ImGui.PopFont();
 
@@ -1780,23 +2105,68 @@ public class ScreenCanvas
         {
             CoreSettings.SetNeonFx(!CoreSettings.NeonFx);
         }
+        ImGuiAccessibility.Toggle(
+            $"{semanticPrefix}.glow",
+            "Glow effect",
+            glowAvailable && CoreSettings.NeonFx,
+            () => CoreSettings.SetNeonFx(!CoreSettings.NeonFx),
+            glowAvailable
+                ? "Add a glow effect to notes."
+                : "Glow is unavailable with the current visual-effects accessibility setting.",
+            glowAvailable);
         ImGui.EndDisabled();
         ImGui.PopFont();
 
         ImGui.SetCursorScreenPos(new(ImGuiUtils.FixedSize(new Vector2(155)).X, CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(110)).Y));
-        if (ImGui.Button("Hand colors", ImGuiUtils.FixedSize(new Vector2(125, 40))))
-            ImGui.OpenPopup("Hand colors menu");
-        if (ImGui.BeginPopup("Hand colors menu"))
+        var openedHandColorsFromAutomation = _openHandColorsFromAutomation;
+        var handColorsInvoked = ImGui.Button(
+            "Hand colors",
+            ImGuiUtils.FixedSize(new Vector2(125, 40)));
+        if (handColorsInvoked ||
+            openedHandColorsFromAutomation)
         {
+            _openHandColorsFromAutomation = false;
+            _focusHandColorsFirstControl = openedHandColorsFromAutomation;
+            ImGui.OpenPopup("Hand colors menu");
+        }
+        ImGuiAccessibility.Button(
+            $"{semanticPrefix}.hand-colors",
+            "Hand colors",
+            () => _openHandColorsFromAutomation = true,
+            "Open the left- and right-hand color settings.",
+            invoked: handColorsInvoked);
+        var handColorsOpen = ImGui.BeginPopup("Hand colors menu");
+        if (handColorsOpen)
+        {
+            if (_focusHandColorsFirstControl)
+            {
+                ImGui.SetKeyboardFocusHere();
+                _focusHandColorsFirstControl = false;
+            }
             ImGui.ColorEdit4("Left hand color", ref ThemeManager.LeftHandCol,
                 ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoDragDrop |
                 ImGuiColorEditFlags.NoOptions | ImGuiColorEditFlags.NoAlpha);
+            ImGuiAccessibility.Edit(
+                $"{semanticPrefix}.hand-colors.left",
+                "Left hand color",
+                FormatColor(ThemeManager.LeftHandCol),
+                value => ThemeManager.LeftHandCol = ParseColor(value, ThemeManager.LeftHandCol),
+                "Enter a color as #RRGGBB.");
             ImGui.ColorEdit4("Right hand color", ref ThemeManager.RightHandCol,
                 ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.NoDragDrop |
                 ImGuiColorEditFlags.NoOptions | ImGuiColorEditFlags.NoAlpha);
+            ImGuiAccessibility.Edit(
+                $"{semanticPrefix}.hand-colors.right",
+                "Right hand color",
+                FormatColor(ThemeManager.RightHandCol),
+                value => ThemeManager.RightHandCol = ParseColor(value, ThemeManager.RightHandCol),
+                "Enter a color as #RRGGBB.");
             ImGui.EndPopup();
         }
-        _leftHandColorPicker = ImGui.IsPopupOpen("Hand colors menu");
+        if (!handColorsOpen && _handColorsWasOpen)
+            UiAutomationRuntime.Coordinator.RequestFocus($"{semanticPrefix}.hand-colors");
+        _handColorsWasOpen = handColorsOpen;
+        _leftHandColorPicker = handColorsOpen;
         _rightHandColorPicker = _leftHandColorPicker;
 
         if (!playMode && !IsPracticeMode)
@@ -1806,35 +2176,127 @@ public class ScreenCanvas
 
         if (CoreSettings.SoundEngine == SoundEngine.SoundFonts)
         {
-            // SOUNDFONTS DROPDOWN LIST
-            ImGui.SetCursorScreenPos(new(ImGuiUtils.FixedSize(new Vector2(160)).X, CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(50)).Y));
-            if (ImGui.BeginCombo("SoundFont##SoundFont", SoundFontPlayer.ActiveSoundFont, ImGuiComboFlags.HeightLargest | ImGuiComboFlags.WidthFitPreview))
+            var soundFontControlId = $"{semanticPrefix}.soundfont";
+            var availableSoundFontPaths = AvailableSoundFonts();
+            var soundFonts = availableSoundFontPaths
+                .Select(path => (
+                    Id: ImGuiAccessibility.StableId(
+                        $"{soundFontControlId}.option",
+                        path),
+                    Name: Path.GetFileNameWithoutExtension(path),
+                    Value: path))
+                .ToList();
+            var selectedSoundFontPath = ResolveSoundFontSelection(
+                SoundFontPlayer.ActiveSoundFontPath,
+                availableSoundFontPaths);
+            if (string.IsNullOrEmpty(selectedSoundFontPath))
             {
-                _comboSoundFont = true;
-                foreach (var folderPath in SoundFontsPathsManager.SoundFontsPaths)
-                {
-                    foreach (var soundFontPath in Directory.GetFiles(folderPath).Where(f => Path.GetExtension(f) == ".sf2"))
-                    {
-                        if (ImGui.Selectable(Path.GetFileNameWithoutExtension(soundFontPath)))
-                        {
-                            MidiPlayer.SoundFontEngine?.StopAllNote(0);
-                            SoundFontPlayer.LoadSoundFont(soundFontPath);
-                        }
-                    }
-                }
-                ImGui.EndCombo();
+                soundFonts.Add((
+                    $"{soundFontControlId}.option.none",
+                    "No SoundFont loaded",
+                    string.Empty));
             }
-            else
-                _comboSoundFont = false;
+            else if (availableSoundFontPaths.All(path => !string.Equals(
+                         path,
+                         selectedSoundFontPath,
+                         StringComparison.OrdinalIgnoreCase)))
+            {
+                soundFonts.Add((
+                    ImGuiAccessibility.StableId(
+                        $"{soundFontControlId}.option",
+                        selectedSoundFontPath),
+                    $"{SoundFontPlayer.ActiveSoundFont} (Unavailable)",
+                    selectedSoundFontPath));
+            }
+
+            ImGui.SetCursorScreenPos(new(ImGuiUtils.FixedSize(new Vector2(160)).X, CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(50)).Y));
+            ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(240)).X);
+            ImGuiAccessibility.ComboBox(
+                soundFontControlId,
+                "SoundFont",
+                selectedSoundFontPath,
+                soundFonts,
+                soundFontPath =>
+                {
+                    if (availableSoundFontPaths.All(path => !string.Equals(
+                            path,
+                            soundFontPath,
+                            StringComparison.OrdinalIgnoreCase)))
+                    {
+                        return;
+                    }
+                    MidiPlayer.SoundFontEngine?.StopAllNote(0);
+                    SoundFontPlayer.LoadSoundFont(soundFontPath);
+                },
+                "Choose the instrument samples used for playback.",
+                enabled: availableSoundFontPaths.Count > 0);
+            _comboSoundFont = ImGuiAccessibility.IsComboBoxExpanded(soundFontControlId);
+            _comboPlugins = false;
         }
         else if (CoreSettings.SoundEngine == SoundEngine.Plugins)
         {
-            var instrument = VstPlayer.PluginsChain?.PluginInstrument;
+            var pluginsControlId = $"{semanticPrefix}.plugins";
+            var pluginsPopupId = $"Plugin controls##{semanticPrefix}";
+            var chain = VstPlayer.PluginsChain;
+            var instrument = chain?.PluginInstrument;
             var name = instrument == null ? "No Plugin Instrument" : instrument.PluginName;
 
-            // PLUGINS DROPDOWN LIST
             ImGui.SetCursorScreenPos(new(ImGuiUtils.FixedSize(new Vector2(160)).X, CanvasPos.Y + ImGuiUtils.FixedSize(new Vector2(50)).Y));
-            if (ImGui.BeginCombo("Plugin instrument##Plugins", name, ImGuiComboFlags.HeightLargest | ImGuiComboFlags.WidthFitPreview))
+            var wasPluginControlsOpen = ImGui.IsPopupOpen(pluginsPopupId);
+            var pluginControlsClicked = ImGui.Button(
+                $"Plugin controls: {name}##Plugins",
+                new Vector2(ImGuiUtils.FixedSize(new Vector2(300)).X, 0));
+            if (_openPluginControlsFromAutomation ||
+                (pluginControlsClicked && !wasPluginControlsOpen))
+            {
+                _openPluginControlsFromAutomation = false;
+                _focusPluginControlsFirstControl = true;
+                ImGui.OpenPopup(pluginsPopupId);
+                wasPluginControlsOpen = true;
+            }
+            else if (pluginControlsClicked && wasPluginControlsOpen)
+            {
+                _closePluginControlsFromAutomation = true;
+            }
+
+            var pluginControlsExpanded = wasPluginControlsOpen &&
+                                         !_closePluginControlsFromAutomation;
+            ImGuiAccessibility.RegisterLastItem(
+                new AccessibilityNode(
+                    pluginsControlId,
+                    UiAutomationRuntime.CurrentScreenId,
+                    AccessibilityRole.Group,
+                    "Plugin controls")
+                {
+                    Description = "Edit or replace the playback instrument and configure audio effects.",
+                    Value = $"Instrument: {name}",
+                    IsEnabled = true,
+                    IsFocusable = true,
+                    IsExpanded = pluginControlsExpanded,
+                    SupportedActions = AccessibilityAction.Expand |
+                                       AccessibilityAction.Collapse |
+                                       AccessibilityAction.Focus
+                },
+                request =>
+                {
+                    if (request.Action == AccessibilityAction.Expand)
+                    {
+                        _openPluginControlsFromAutomation = true;
+                        _focusPluginControlsFirstControl = true;
+                    }
+                    else if (request.Action == AccessibilityAction.Collapse)
+                    {
+                        _closePluginControlsFromAutomation = true;
+                    }
+                });
+
+            var pluginControlsOpen = ImGui.BeginPopup(pluginsPopupId);
+            if (pluginControlsOpen && _closePluginControlsFromAutomation)
+            {
+                ImGui.CloseCurrentPopup();
+                _closePluginControlsFromAutomation = false;
+            }
+            else if (pluginControlsOpen)
             {
                 _comboPlugins = true;
 
@@ -1842,75 +2304,286 @@ public class ScreenCanvas
 
                 ImGui.Text(name);
                 ImGui.SameLine();
-                if (ImGui.SmallButton($"{FontAwesome6.ScrewdriverWrench} Edit instrument##tweak_instrument") && instrument is VstPlugin vstInstrument)
-                {
+                var canEditInstrument = instrument is VstPlugin;
+                ImGui.BeginDisabled(!canEditInstrument);
+                var editInstrumentInvoked = ImGui.SmallButton(
+                    $"{FontAwesome6.ScrewdriverWrench} Edit instrument##tweak_instrument");
+                if (editInstrumentInvoked && instrument is VstPlugin vstInstrument)
                     vstInstrument.OpenPluginWindow();
-                }
+                ImGui.EndDisabled();
+                ImGuiAccessibility.Button(
+                    $"{pluginsControlId}.instrument.edit",
+                    "Edit plugin instrument",
+                    () => (instrument as VstPlugin)?.OpenPluginWindow(),
+                    "Open the plugin instrument editor.",
+                    value: name,
+                    enabled: canEditInstrument,
+                    parentId: pluginsControlId,
+                    invoked: editInstrumentInvoked);
                 ImGui.SameLine();
-                if (ImGui.SmallButton($"{FontAwesome6.FolderOpen} Change instrument##change_instrument"))
+                if (_focusPluginControlsFirstControl)
                 {
-                    var dialog = new OpenFileDialog()
-                    {
-                        Title = "Select a VST2 plugin instrument",
-                        Filter = "vst plugin (*.dll)|*.dll"
-                    };
-                    dialog.ShowOpenFileDialog();
-
-                    if (dialog.Success)
-                    {
-                        var file = new FileInfo(dialog.Files.First());
-                        var plugin = new VstPlugin(file.FullName);
-                        if (plugin.PluginType != PluginType.Instrument)
-                        {
-                            plugin.Dispose();
-                            User32.MessageBox(IntPtr.Zero, "Plugin is not an instrument.", "Error Loading Plugin",
-                                User32.MB_FLAGS.MB_ICONERROR | User32.MB_FLAGS.MB_TOPMOST);
-                        }
-                        else
-                        {
-                            VstPlayer.PluginsChain.AddPlugin(plugin);
-                            PluginsPathManager.LoadValidInstrumentPath(file.FullName);
-                        }
-                    }
+                    ImGui.SetKeyboardFocusHere();
+                    _focusPluginControlsFirstControl = false;
                 }
+                var changeInstrumentInvoked = ImGui.SmallButton(
+                    $"{FontAwesome6.FolderOpen} Change instrument##change_instrument");
+                if (changeInstrumentInvoked)
+                    ChangePluginInstrument();
+                ImGuiAccessibility.Button(
+                    $"{pluginsControlId}.instrument.change",
+                    "Change plugin instrument",
+                    ChangePluginInstrument,
+                    "Choose a VST2 instrument plugin file.",
+                    value: name,
+                    parentId: pluginsControlId,
+                    invoked: changeInstrumentInvoked);
 
                 ImGui.Spacing();
                 ImGui.SeparatorText("Effects");
 
-                foreach (var effect in VstPlayer.PluginsChain.FxPlugins.ToList())
+                foreach (var effect in chain?.FxPlugins.ToList() ?? new List<IPlugin>())
                 {
+                    var effectId = ImGuiAccessibility.StableId(
+                        $"{pluginsControlId}.effect",
+                        effect.PluginId);
                     ImGui.AlignTextToFramePadding();
                     ImGui.Text(effect.PluginName);
                     ImGui.SameLine();
-                    if (ImGui.SmallButton($"{FontAwesome6.ScrewdriverWrench} Edit effect##tweak_effect{effect.PluginId}") && effect is VstPlugin vstEffect)
-                    {
+                    var canEditEffect = effect is VstPlugin;
+                    ImGui.BeginDisabled(!canEditEffect);
+                    var editEffectInvoked = ImGui.SmallButton(
+                        $"{FontAwesome6.ScrewdriverWrench} Edit effect##tweak_effect{effect.PluginId}");
+                    if (editEffectInvoked && effect is VstPlugin vstEffect)
                         vstEffect.OpenPluginWindow();
-                    }
+                    ImGui.EndDisabled();
+                    ImGuiAccessibility.Button(
+                        $"{effectId}.edit",
+                        $"Edit {effect.PluginName} effect",
+                        () => (effect as VstPlugin)?.OpenPluginWindow(),
+                        "Open this audio effect editor.",
+                        enabled: canEditEffect,
+                        parentId: pluginsControlId,
+                        invoked: editEffectInvoked);
                     bool enabled = effect.Enabled;
                     string state = enabled ? "ON" : "OFF";
                     ImGui.SameLine();
                     if (ImGui.SmallButton($"{state}##{effect.PluginId}"))
-                    {
                         effect.Enabled = !effect.Enabled;
-                    }
+                    ImGuiAccessibility.Toggle(
+                        $"{effectId}.enabled",
+                        $"{effect.PluginName} effect",
+                        effect.Enabled,
+                        () => effect.Enabled = !effect.Enabled,
+                        "Enable or bypass this audio effect.",
+                        parentId: pluginsControlId);
                 }
-
-                ImGui.EndCombo();
             }
-            else
+
+            if (pluginControlsOpen)
+                ImGui.EndPopup();
+
+            if (!pluginControlsOpen && _pluginControlsWasOpen)
+                UiAutomationRuntime.Coordinator.RequestFocus(pluginsControlId);
+            _pluginControlsWasOpen = pluginControlsOpen;
+            if (!pluginControlsOpen)
                 _comboPlugins = false;
+            _comboSoundFont = false;
         }
 
         // SUSTAIN PEDAL BUTTON
         var sustainLabel = IOHandle.SustainPedalActive ? "Sustain: On" : "Sustain: Off";
         var sustainSize = ImGuiUtils.FixedSize(new Vector2(130, 50));
-        ImGui.SetCursorPos(ImGui.GetWindowSize() - sustainSize - ImGuiUtils.FixedSize(new Vector2(15)));
-        if (ImGui.Button($"{sustainLabel}##SustainBtn", sustainSize))
+        void ToggleSustain()
         {
             IOHandle.OnEventReceived(null, new Melanchall.DryWetMidi.Multimedia.MidiEventReceivedEventArgs(
                 new ControlChangeEvent(ControlUtilities.AsSevenBitNumber(ControlName.DamperPedal),
                 new SevenBitNumber((byte)(IOHandle.SustainPedalActive ? 0 : 100)))));
             DevicesManager.ODevice?.SendEvent(new ControlChangeEvent(new SevenBitNumber(64), new SevenBitNumber((byte)(IOHandle.SustainPedalActive ? 0 : 100))));
+        }
+        ImGui.SetCursorPos(ImGui.GetWindowSize() - sustainSize - ImGuiUtils.FixedSize(new Vector2(15)));
+        if (ImGui.Button($"{sustainLabel}##SustainBtn", sustainSize))
+            ToggleSustain();
+        ImGuiAccessibility.Toggle(
+            $"{semanticPrefix}.sustain",
+            "Sustain pedal",
+            IOHandle.SustainPedalActive,
+            ToggleSustain,
+            "Hold or release the sustain pedal.");
+    }
+
+    private static IReadOnlyList<string> AvailableSoundFonts()
+    {
+        var folderPaths = SoundFontsPathsManager.SoundFontsPaths.ToArray();
+        var folderSignature = string.Join(
+            "\u001f",
+            folderPaths);
+        var now = Environment.TickCount64;
+        lock (SoundFontCatalogGate)
+        {
+            if (!string.Equals(
+                    folderSignature,
+                    _soundFontFoldersSignature,
+                    StringComparison.Ordinal))
+            {
+                _soundFontFoldersSignature = folderSignature;
+                _availableSoundFonts = Array.Empty<string>();
+                _soundFontCatalogRefreshedAt = 0;
+            }
+
+            var refreshDue = _soundFontCatalogRefreshedAt == 0 ||
+                             now - _soundFontCatalogRefreshedAt >=
+                             SoundFontCatalogRefreshMilliseconds;
+            if (refreshDue && !_soundFontCatalogRefreshInProgress)
+            {
+                _soundFontCatalogRefreshInProgress = true;
+                _ = Task.Run(() => ScanSoundFontFolders(folderPaths))
+                    .ContinueWith(
+                        task => CompleteSoundFontCatalogRefresh(
+                            folderSignature,
+                            task),
+                        CancellationToken.None,
+                        TaskContinuationOptions.ExecuteSynchronously,
+                        TaskScheduler.Default);
+            }
+            return _availableSoundFonts;
+        }
+    }
+
+    internal static string ResolveSoundFontSelection(
+        string activeSoundFontPath,
+        IEnumerable<string> availableSoundFontPaths)
+    {
+        ArgumentNullException.ThrowIfNull(activeSoundFontPath);
+        ArgumentNullException.ThrowIfNull(availableSoundFontPaths);
+        return availableSoundFontPaths.FirstOrDefault(path => string.Equals(
+                   path,
+                   activeSoundFontPath,
+                   StringComparison.OrdinalIgnoreCase)) ??
+               activeSoundFontPath;
+    }
+
+    private static IReadOnlyList<string> ScanSoundFontFolders(
+        IEnumerable<string> folderPaths)
+    {
+        var soundFonts = new List<string>();
+        foreach (var folderPath in folderPaths)
+        {
+            try
+            {
+                if (!Directory.Exists(folderPath))
+                    continue;
+                soundFonts.AddRange(
+                    Directory.EnumerateFiles(folderPath)
+                        .Where(path => string.Equals(
+                            Path.GetExtension(path),
+                            ".sf2",
+                            StringComparison.OrdinalIgnoreCase))
+                        .Select(Path.GetFullPath));
+            }
+            catch (IOException)
+            {
+                // A removable or network folder can disappear while the menu is built.
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Ignore inaccessible search folders and keep the remaining choices usable.
+            }
+            catch (System.Security.SecurityException)
+            {
+                // Treat security-policy failures like other inaccessible folders.
+            }
+        }
+
+        return soundFonts
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(path => Path.GetFileNameWithoutExtension(path), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static void CompleteSoundFontCatalogRefresh(
+        string folderSignature,
+        Task<IReadOnlyList<string>> refreshTask)
+    {
+        lock (SoundFontCatalogGate)
+        {
+            _soundFontCatalogRefreshInProgress = false;
+            if (refreshTask.Status == TaskStatus.RanToCompletion &&
+                string.Equals(
+                    folderSignature,
+                    _soundFontFoldersSignature,
+                    StringComparison.Ordinal))
+            {
+                _availableSoundFonts = refreshTask.Result;
+            }
+            if (string.Equals(
+                    folderSignature,
+                    _soundFontFoldersSignature,
+                    StringComparison.Ordinal))
+                _soundFontCatalogRefreshedAt = Environment.TickCount64;
+        }
+    }
+
+    private static void ChangePluginInstrument()
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Select a VST2 plugin instrument",
+            Filter = "vst plugin (*.dll)|*.dll"
+        };
+        dialog.ShowOpenFileDialog();
+        if (!dialog.Success)
+            return;
+
+        var file = new FileInfo(dialog.Files.First());
+        var plugin = new VstPlugin(file.FullName);
+        if (plugin.PluginType != PluginType.Instrument)
+        {
+            plugin.Dispose();
+            User32.MessageBox(
+                IntPtr.Zero,
+                "Plugin is not an instrument.",
+                "Error Loading Plugin",
+                User32.MB_FLAGS.MB_ICONERROR | User32.MB_FLAGS.MB_TOPMOST);
+            return;
+        }
+
+        var chain = VstPlayer.PluginsChain;
+        if (chain is null)
+        {
+            plugin.Dispose();
+            User32.MessageBox(
+                IntPtr.Zero,
+                "The plugin audio engine is not available.",
+                "Error Loading Plugin",
+                User32.MB_FLAGS.MB_ICONERROR | User32.MB_FLAGS.MB_TOPMOST);
+            return;
+        }
+
+        chain.AddPlugin(plugin);
+        PluginsPathManager.LoadValidInstrumentPath(file.FullName);
+    }
+
+    private static string FormatColor(Vector4 color)
+    {
+        static int Channel(float value) => (int)Math.Round(Math.Clamp(value, 0f, 1f) * 255f);
+        return $"#{Channel(color.X):X2}{Channel(color.Y):X2}{Channel(color.Z):X2}";
+    }
+
+    private static Vector4 ParseColor(string value, Vector4 fallback)
+    {
+        try
+        {
+            return ImGuiTheme.HtmlToVec4(value);
+        }
+        catch (ArgumentException)
+        {
+            return fallback;
+        }
+        catch (FormatException)
+        {
+            return fallback;
         }
     }
 

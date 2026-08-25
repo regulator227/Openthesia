@@ -1,6 +1,5 @@
 ﻿using IconFonts;
 using ImGuiNET;
-using Melanchall.DryWetMidi.Multimedia;
 using NAudio.Wave;
 using System.Numerics;
 using Vanara.PInvoke;
@@ -12,6 +11,7 @@ using static Openthesia.Settings.SoundFontsPathsManager;
 using static Openthesia.Settings.ThemeManager;
 using Openthesia.Ui.Helpers;
 using Openthesia.Core;
+using Openthesia.Core.Accessibility;
 using Openthesia.Core.FileDialogs;
 using Openthesia.Core.Midi;
 using Openthesia.Core.Practice;
@@ -20,11 +20,14 @@ using Openthesia.Enums;
 using Openthesia.Settings;
 using Openthesia.Core.Plugins;
 using System.IO;
+using Openthesia.Ui.Accessibility;
 
 namespace Openthesia.Ui.Windows;
 
 public class SettingsWindow : ImGuiWindow
 {
+    private const string NoDeviceToken = "none";
+
     public SettingsWindow()
     {
         _id = Enums.Windows.Settings.ToString();
@@ -46,13 +49,23 @@ public class SettingsWindow : ImGuiWindow
         var buttonHeight = ImGuiUtils.FixedSize(new Vector2(50)).Y;
         ImGui.PushFont(FontController.Font16_Icon16);
         ImGui.SetCursorScreenPos(new Vector2(margin, Math.Min(buttonHeight, display.Y * 0.08f)));
-        if (ImGui.Button($"{FontAwesome6.ArrowLeftLong} Back", ImGuiUtils.FixedSize(new Vector2(120, 50))) ||
-            (!ImGui.GetIO().WantTextInput &&
-             !ImGui.IsPopupOpen(string.Empty, ImGuiPopupFlags.AnyPopupId) &&
-             ImGui.IsKeyPressed(ImGuiKey.Escape, false)))
+        void GoBack() => WindowsManager.SetWindow(Enums.Windows.Home);
+        var backInvoked = ImGui.Button(
+                              $"{FontAwesome6.ArrowLeftLong} Back",
+                              ImGuiUtils.FixedSize(new Vector2(120, 50))) ||
+                          (!ImGui.GetIO().WantTextInput &&
+                           !ImGui.IsPopupOpen(string.Empty, ImGuiPopupFlags.AnyPopupId) &&
+                           ImGui.IsKeyPressed(ImGuiKey.Escape, false));
+        if (backInvoked)
         {
-            WindowsManager.SetWindow(Enums.Windows.Home);
+            GoBack();
         }
+        ImGuiAccessibility.Button(
+            "device-settings.back",
+            "Back",
+            GoBack,
+            "Return to Home.",
+            invoked: backInvoked);
         ImGui.PopFont();
 
         ImGui.PushFont(FontController.Title);
@@ -80,53 +93,98 @@ public class SettingsWindow : ImGuiWindow
         ImGui.Text($"MIDI DEVICES {FontAwesome6.Keyboard}");
         ImGui.Spacing();
 
-        if (InputDevice.GetDevicesCount() <= 0)
-            ImGui.BeginDisabled();
-
-        var inputName = IDevice != null ? IDevice.Name : "None";
-        if (ImGui.BeginCombo($"Input device {FontAwesome6.CircleArrowRight}", inputName))
-        {
-            for (int i = 0; i < InputDevice.GetAll().Count; i++)
+        var inputDevices = GetInputDeviceDescriptors();
+        var hasInputDevices = inputDevices.Count > 0;
+        var selectedInputToken = ActiveInputDeviceToken ?? NoDeviceToken;
+        IEnumerable<(string Id, string Name, string Value)> inputOptions = new[]
             {
-                if (ImGui.Selectable(InputDevice.GetByIndex(i).Name))
-                {
-                    SetInputDevice(i);
-                }
+                ("device-settings.input-device.none", "None", NoDeviceToken)
             }
-            ImGui.EndCombo();
+            .Concat(inputDevices.Select(device => (
+                ImGuiAccessibility.StableId("device-settings.input-device", device.Token),
+                device.Name,
+                device.Token)));
+        if (ActiveInputDeviceToken is not null &&
+            inputDevices.All(device => device.Token != ActiveInputDeviceToken))
+        {
+            inputOptions = inputOptions.Append((
+                ImGuiAccessibility.StableId(
+                    "device-settings.input-device",
+                    ActiveInputDeviceToken),
+                $"{ActiveInputDeviceName ?? "MIDI input device"} (Disconnected)",
+                ActiveInputDeviceToken));
         }
+        ImGuiAccessibility.ComboBox(
+            "device-settings.input-device",
+            "MIDI input device",
+            selectedInputToken,
+            inputOptions,
+            token =>
+            {
+                if (token == NoDeviceToken)
+                {
+                    ReleaseInputDevice();
+                    return;
+                }
+
+                TrySetInputDevice(token);
+            },
+            "Choose the keyboard used for Practice input.",
+            enabled: true);
 
         ImGui.SameLine();
+        if (!hasInputDevices)
+            ImGui.BeginDisabled();
         ImGui.Checkbox("Velocity 0 is Note-Off", ref VelocityZeroIsNoteOff);
+        ImGuiAccessibility.Toggle(
+            "device-settings.velocity-zero-note-off",
+            "Velocity zero is Note-Off",
+            VelocityZeroIsNoteOff,
+            () => VelocityZeroIsNoteOff = !VelocityZeroIsNoteOff,
+            enabled: hasInputDevices);
 
-        if (InputDevice.GetDevicesCount() <= 0)
+        if (!hasInputDevices)
             ImGui.EndDisabled();
 
         ImGui.Dummy(new(10));
 
-        if (OutputDevice.GetDevicesCount() <= 0)
-            ImGui.BeginDisabled();
-
-        var outputName = ODevice != null ? ODevice.Name : "None";
-        if (ImGui.BeginCombo($"Output device {FontAwesome6.CircleArrowLeft}", outputName))
+        var outputDevices = GetOutputDeviceDescriptors();
+        var selectedOutputToken = ActiveOutputDeviceToken ?? NoDeviceToken;
+        IEnumerable<(string Id, string Name, string Value)> outputOptions = new[]
+            {
+                ("device-settings.output-device.none", "None", NoDeviceToken)
+            }
+            .Concat(outputDevices.Select(device => (
+                ImGuiAccessibility.StableId("device-settings.output-device", device.Token),
+                device.Name,
+                device.Token)));
+        if (ActiveOutputDeviceToken is not null &&
+            outputDevices.All(device => device.Token != ActiveOutputDeviceToken))
         {
-            if (ImGui.Selectable("None"))
-            {
-                ReleaseOutputDevice();
-            }
-
-            for (int i = 0; i < OutputDevice.GetAll().Count; i++)
-            {
-                if (ImGui.Selectable(OutputDevice.GetByIndex(i).Name))
-                {
-                    SetOutputDevice(i);
-                }
-            }
-            ImGui.EndCombo();
+            outputOptions = outputOptions.Append((
+                ImGuiAccessibility.StableId(
+                    "device-settings.output-device",
+                    ActiveOutputDeviceToken),
+                $"{ActiveOutputDeviceName ?? "MIDI output device"} (Disconnected)",
+                ActiveOutputDeviceToken));
         }
+        ImGuiAccessibility.ComboBox(
+            "device-settings.output-device",
+            "MIDI output device",
+            selectedOutputToken,
+            outputOptions,
+            token =>
+            {
+                if (token == NoDeviceToken)
+                {
+                    ReleaseOutputDevice();
+                    return;
+                }
 
-        if (OutputDevice.GetDevicesCount() <= 0)
-            ImGui.EndDisabled();
+                TrySetOutputDevice(token);
+            },
+            "Choose the keyboard output used for Lighted Keyboard Guidance.",
+            enabled: true);
 
         ImGui.Dummy(new(10));
 
@@ -139,6 +197,18 @@ public class SettingsWindow : ImGuiWindow
                 lightedKeyboard.MidiChannel);
             MidiPracticeSession.RefreshLightedKeyboardGuidance();
         }
+        ImGuiAccessibility.Toggle(
+            "device-settings.lighted-keyboard-guidance",
+            "Lighted Keyboard Guidance",
+            CoreSettings.LightedKeyboard.Enabled,
+            () =>
+            {
+                CoreSettings.SetLightedKeyboardSettings(
+                    !CoreSettings.LightedKeyboard.Enabled,
+                    CoreSettings.LightedKeyboard.MidiChannel);
+                MidiPracticeSession.RefreshLightedKeyboardGuidance();
+            },
+            "Send the next Required Hands target to a keyboard's light or navigate channel.");
 
         var lightedKeyboardChannel = CoreSettings.LightedKeyboard.MidiChannel;
         ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(180)).X);
@@ -149,6 +219,21 @@ public class SettingsWindow : ImGuiWindow
                 lightedKeyboardChannel);
             MidiPracticeSession.RefreshLightedKeyboardGuidance();
         }
+        ImGuiAccessibility.Slider(
+            "device-settings.lighted-keyboard-channel",
+            "Lighted Keyboard Guidance channel",
+            CoreSettings.LightedKeyboard.MidiChannel,
+            1,
+            16,
+            1,
+            value =>
+            {
+                CoreSettings.SetLightedKeyboardSettings(
+                    CoreSettings.LightedKeyboard.Enabled,
+                    (int)Math.Round(value));
+                MidiPracticeSession.RefreshLightedKeyboardGuidance();
+            },
+            "Match the keyboard's light or navigate MIDI channel.");
         ImGui.TextWrapped(
             "Uses standard low-velocity MIDI notes for the next Required Hands Practice Target in Wait for Notes and Play in Time. " +
             "Match this channel to the keyboard's light or navigate channel. The keyboard may sound guide notes unless its guide sound is disabled.");
@@ -662,33 +747,40 @@ public class SettingsWindow : ImGuiWindow
         ImGui.Dummy(new(10));
 
         var effectsPreference = AccessibilityRuntime.Settings.VisualEffects;
-        if (ImGui.BeginCombo("Visual effects", effectsPreference.ToString()))
-        {
-            foreach (VisualEffectsPreference preference in Enum.GetValues(typeof(VisualEffectsPreference)))
-            {
-                if (ImGui.Selectable(preference.ToString(), preference == effectsPreference))
-                    AccessibilityRuntime.SetVisualEffects(preference);
-            }
-            ImGui.EndCombo();
-        }
+        ImGuiAccessibility.ComboBox(
+            "device-settings.visual-effects",
+            "Visual effects",
+            effectsPreference,
+            Enum.GetValues<VisualEffectsPreference>().Select(preference => (
+                $"device-settings.visual-effects.{preference.ToString().ToLowerInvariant()}",
+                preference.ToString(),
+                preference)),
+            AccessibilityRuntime.SetVisualEffects,
+            "System follows Windows preferences. Reduce removes decorative motion, glow, and transparency.");
         ImGui.TextWrapped("System follows Windows animation and contrast preferences. Reduce removes decorative motion, glow, and transparency.");
         if (AccessibilityRuntime.Warning is not null)
+        {
             ImGui.TextWrapped(AccessibilityRuntime.Warning);
+            ImGuiAccessibility.Text(
+                "device-settings.accessibility-status",
+                "Accessibility settings status",
+                AccessibilityRuntime.Warning,
+                liveSetting: AccessibilityLiveSetting.Polite);
+        }
 
         ImGui.Dummy(new(10));
 
         ImGuiTheme.PushButton(ImGuiTheme.HtmlToVec4("#0284C7"), ImGuiTheme.HtmlToVec4("#0284C7"), ImGuiTheme.HtmlToVec4("#0284C7"));
-        if (ImGui.BeginCombo($"Theme {FontAwesome6.PaintRoller}", Theme.ToString()))
-        {
-            foreach (var theme in Enum.GetValues(typeof(Themes)))
-            {
-                if (ImGui.Selectable(theme.ToString()))
-                {
-                    SetTheme((Themes)theme);
-                }
-            }
-            ImGui.EndCombo();
-        }
+        ImGuiAccessibility.ComboBox(
+            "device-settings.theme",
+            "Theme",
+            Theme,
+            Enum.GetValues<Themes>().Select(theme => (
+                $"device-settings.theme.{theme.ToString().ToLowerInvariant()}",
+                theme.ToString(),
+                theme)),
+            SetTheme,
+            "Choose the application color theme.");
         ImGuiTheme.PopButton();
 
         ImGui.EndChild();
@@ -697,4 +789,5 @@ public class SettingsWindow : ImGuiWindow
         ImGui.PopFont();
         ImGuiTheme.PushTheme();
     }
+
 }

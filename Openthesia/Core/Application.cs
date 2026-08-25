@@ -1,4 +1,5 @@
 ﻿using Openthesia.Core.Midi;
+using Openthesia.Ui.Accessibility;
 using Openthesia.Ui.Windows;
 
 namespace Openthesia.Core;
@@ -43,6 +44,7 @@ public class Application
 
     public void OnUpdate()
     {
+        UiAutomationRuntime.DispatchActions();
         foreach (ImGuiWindow window in GetWindows())
         {
             if (window.Active())

@@ -8,6 +8,7 @@ using Openthesia.Core;
 using Openthesia.Core.Plugins;
 using Openthesia.Core.Practice;
 using Openthesia.Settings;
+using Openthesia.Ui.Accessibility;
 
 namespace Openthesia;
 
@@ -33,6 +34,7 @@ class Program
 
         _cl = _gd.ResourceFactory.CreateCommandList();
         _controller = new ImGuiController(_gd, _gd.MainSwapchain.Framebuffer.OutputDescription, _window.Width, _window.Height);
+        UiAutomationRuntime.Initialize(_window.Handle);
 
         _window.Resized += () =>
         {
@@ -104,6 +106,7 @@ class Program
         }
 
         MidiPracticeSession.ClearLightedKeyboardGuidance();
+        UiAutomationRuntime.Shutdown();
         ProgramData.SaveSettings();
 
         _gd.WaitForIdle();

@@ -1,4 +1,5 @@
 ﻿using ImGuiNET;
+using Openthesia.Ui.Accessibility;
 using System.Numerics;
 
 namespace Openthesia.Core;
@@ -56,6 +57,7 @@ public abstract class ImGuiWindow
     /// </summary>
     public void RenderWindow()
     {
+        UiAutomationRuntime.BeginFrame(_id, _io.DisplaySize);
         ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 0f);
         var visible = ImGui.Begin(_id, ref _active, _windowFlags);
         ImGui.PopStyleVar();
@@ -78,6 +80,7 @@ public abstract class ImGuiWindow
             OnImGui();
         }
         ImGui.End();
+        UiAutomationRuntime.EndFrame();
     }
 
     /// <summary>

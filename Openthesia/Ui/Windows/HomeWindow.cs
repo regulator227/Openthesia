@@ -3,6 +3,7 @@ using Openthesia.Core;
 using Openthesia.Core.Plugins;
 using Openthesia.Settings;
 using Openthesia.Ui.Helpers;
+using Openthesia.Ui.Accessibility;
 using System.Diagnostics;
 using System.Numerics;
 
@@ -66,7 +67,14 @@ public class HomeWindow : ImGuiWindow
         }
     }
 
-    private void DrawButton(string label, (string idle, string hover, string active) htmlColor, ref bool btnHoverRef, Action onClick)
+    private void DrawButton(
+        string id,
+        string label,
+        string name,
+        string description,
+        (string idle, string hover, string active) htmlColor,
+        ref bool btnHoverRef,
+        Action onClick)
     {
         var drawList = ImGui.GetWindowDrawList();
         ImGuiTheme.PushButton(
@@ -83,8 +91,10 @@ public class HomeWindow : ImGuiWindow
                 ImGui.GetColorU32(ImGuiTheme.HtmlToVec4(htmlColor.idle)), 5.0f);
         }
 
-        if (ImGui.Button(label, ImGuiUtils.FixedSize(_buttonsSize)))
+        var invoked = ImGui.Button(label, ImGuiUtils.FixedSize(_buttonsSize));
+        if (invoked)
             onClick.Invoke();
+        ImGuiAccessibility.Button(id, name, onClick, description, invoked: invoked);
 
         btnHoverRef = ImGui.IsItemHovered();
         ImGuiTheme.PopButton();
@@ -110,28 +120,28 @@ public class HomeWindow : ImGuiWindow
             _buttonsSize = new Vector2(
                 Math.Max(100f, ImGui.GetContentRegionAvail().X),
                 ImGuiUtils.FixedSize(new Vector2(50)).Y);
-            DrawButton("PLAY MIDI FILE", ("#31CB15", "#20870E", "#31CB15"), ref _isPlayMidiHovered, () =>
+            DrawButton("home.song-library", "PLAY MIDI FILE", "Song and Chart Selection", "Choose a Song and Chart.", ("#31CB15", "#20870E", "#31CB15"), ref _isPlayMidiHovered, () =>
             {
                 WindowsManager.SetWindow(Enums.Windows.MidiBrowser);
             });
 
             ImGuiUtils.Spacing(2);
 
-            DrawButton("PLAY MODE", ("#0EA5E9", "#096E9B", "#0EA5E9"), ref _isPlayModeHovered, () =>
+            DrawButton("home.play-mode", "PLAY MODE", "Play Mode", "Open live Performance Visualization.", ("#0EA5E9", "#096E9B", "#0EA5E9"), ref _isPlayModeHovered, () =>
             {
                 WindowsManager.SetWindow(Enums.Windows.PlayMode);
             });
 
             ImGuiUtils.Spacing(2);
 
-            DrawButton("SETTINGS", ("#464748", "#2E2F30", "#464748"), ref _isSettingsHovered, () =>
+            DrawButton("home.device-settings", "SETTINGS", "Device Settings", "Configure devices and accessibility preferences.", ("#464748", "#2E2F30", "#464748"), ref _isSettingsHovered, () =>
             {
                 WindowsManager.SetWindow(Enums.Windows.Settings);
             });
 
             ImGuiUtils.Spacing(2);
 
-            DrawButton("EXIT", ("#B33838", "#772525", "#B33838"), ref _isExitHovered, () =>
+            DrawButton("home.exit", "EXIT", "Exit", "Close Openthesia.", ("#B33838", "#772525", "#B33838"), ref _isExitHovered, () =>
             {
                 Application.AppInstance.Quit();
             });

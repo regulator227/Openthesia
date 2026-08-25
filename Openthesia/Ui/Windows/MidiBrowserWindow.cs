@@ -1,9 +1,11 @@
 ﻿using IconFonts;
 using ImGuiNET;
 using Openthesia.Core;
+using Openthesia.Core.Accessibility;
 using Openthesia.Core.Midi;
 using Openthesia.Settings;
 using Openthesia.Ui.Helpers;
+using Openthesia.Ui.Accessibility;
 using System.Numerics;
 
 namespace Openthesia.Ui.Windows;
@@ -26,13 +28,23 @@ public class MidiBrowserWindow : ImGuiWindow
         {
             string orderIcon = _alphabeticOrder ? FontAwesome6.ArrowDownAZ : FontAwesome6.ArrowUpAZ;
             var orderLabel = _alphabeticOrder ? "Sort A to Z" : "Sort Z to A";
+            void ToggleSort() => _alphabeticOrder = !_alphabeticOrder;
             if (ImGui.Button($"{orderIcon} {orderLabel}"))
-            {
-                _alphabeticOrder = !_alphabeticOrder;
-            }
+                ToggleSort();
+            ImGuiAccessibility.Toggle(
+                "song-library.sort",
+                "Sort ascending",
+                _alphabeticOrder,
+                ToggleSort,
+                "Order Songs and Charts alphabetically by name.");
             ImGui.SameLine();
             ImGui.SetNextItemWidth(Math.Max(100f, ImGui.GetContentRegionAvail().X));
             ImGui.InputTextWithHint($"Search {FontAwesome6.MagnifyingGlass}", "Search midi file...", ref _searchBuffer, 1000);
+            ImGuiAccessibility.Edit(
+                "song-library.search",
+                "Search Songs and Charts",
+                _searchBuffer,
+                value => _searchBuffer = value.Length <= 1000 ? value : value[..1000]);
         }
         ImGui.EndChild();
     }
@@ -72,7 +84,22 @@ public class MidiBrowserWindow : ImGuiWindow
                 RenderSearchBar();
                 ImGui.Separator();
 
-                if (ImGui.BeginChild("Midi file list", ImGui.GetContentRegionAvail()))
+                var sourceListPosition = ImGui.GetCursorScreenPos();
+                var sourceListSize = ImGui.GetContentRegionAvail();
+                UiAutomationRuntime.Coordinator.Register(
+                    new AccessibilityNode(
+                        "song-library.sources",
+                        "song-library",
+                        AccessibilityRole.List,
+                        "MIDI Sources")
+                    {
+                        Bounds = new AccessibilityBounds(
+                            sourceListPosition.X,
+                            sourceListPosition.Y,
+                            sourceListSize.X,
+                            sourceListSize.Y)
+                    });
+                if (ImGui.BeginChild("Midi file list", sourceListSize))
                 {
                     if (ImGui.BeginTable("File Table", 1, ImGuiTableFlags.PadOuterX))
                     {
@@ -92,7 +119,7 @@ public class MidiBrowserWindow : ImGuiWindow
 
                             ImGui.TableNextRow();
                             ImGui.TableSetColumnIndex(0);
-                            if (ImGui.Selectable(Path.GetFileName(file)))
+                            void SelectChart()
                             {
                                 MidiFileHandler.LoadMidiFile(file);
                                 // we start and stop the playback so we can change the time before playing the song,
@@ -101,6 +128,29 @@ public class MidiBrowserWindow : ImGuiWindow
                                 MidiPlayer.Playback.Stop();
                                 WindowsManager.SetWindow(Enums.Windows.ModeSelection);
                             }
+                            var sourceId = ImGuiAccessibility.StableId(
+                                "song-library.midi-source",
+                                file);
+                            if (ImGui.Selectable(Path.GetFileName(file)))
+                            {
+                                SelectChart();
+                                UiAutomationRuntime.NotifyActionCompleted(
+                                    sourceId,
+                                    AccessibilityAction.Invoke);
+                            }
+                            ImGuiAccessibility.RegisterLastItem(
+                                new AccessibilityNode(
+                                    sourceId,
+                                    "song-library.sources",
+                                    AccessibilityRole.ListItem,
+                                    Path.GetFileNameWithoutExtension(file))
+                                {
+                                    Description = "Import this MIDI Source and open its Chart's Practice setup.",
+                                    IsFocusable = true,
+                                    SupportedActions = AccessibilityAction.Invoke |
+                                                       AccessibilityAction.Focus
+                                },
+                                _ => SelectChart());
                         }
 
                         ImGui.EndTable();
@@ -131,23 +181,42 @@ public class MidiBrowserWindow : ImGuiWindow
                 Math.Max(100f, (_io.DisplaySize.X - margin * 2 - gap) / 2));
             var buttonHeight = ImGuiUtils.FixedSize(new Vector2(50)).Y;
             ImGui.SetCursorScreenPos(new Vector2(margin, Math.Min(buttonHeight, _io.DisplaySize.Y * 0.08f)));
-            if (ImGui.Button($"{FontAwesome6.ArrowLeftLong} Back", new Vector2(buttonWidth, buttonHeight)) ||
-                EscapeReturns())
-                WindowsManager.SetWindow(Enums.Windows.Home);
+            void GoBack() => WindowsManager.SetWindow(Enums.Windows.Home);
+            var backInvoked = ImGui.Button(
+                                  $"{FontAwesome6.ArrowLeftLong} Back",
+                                  new Vector2(buttonWidth, buttonHeight)) ||
+                              EscapeReturns();
+            if (backInvoked)
+                GoBack();
+            ImGuiAccessibility.Button(
+                "song-library.back",
+                "Back",
+                GoBack,
+                "Return to Home.",
+                invoked: backInvoked);
 
             ImGuiTheme.PushButton(ImGuiTheme.HtmlToVec4("#0EA5E9"), ImGuiTheme.HtmlToVec4("#096E9B"), ImGuiTheme.HtmlToVec4("#0EA5E9"));
             ImGui.SameLine();
-            if (ImGui.Button($"Open file {FontAwesome6.FileImport}", new Vector2(buttonWidth, buttonHeight)))
+            void OpenFile()
             {
-                if (MidiFileHandler.OpenMidiDialog())
-                {
-                    /* we start and stop the playback so we can change the time before playing the song,
-                      else falling notes and keypresses are mismatched */
-                    MidiPlayer.Playback.Start();
-                    MidiPlayer.Playback.Stop();
-                    WindowsManager.SetWindow(Enums.Windows.ModeSelection);
-                }
+                if (!MidiFileHandler.OpenMidiDialog())
+                    return;
+
+                MidiPlayer.Playback.Start();
+                MidiPlayer.Playback.Stop();
+                WindowsManager.SetWindow(Enums.Windows.ModeSelection);
             }
+            var openFileInvoked = ImGui.Button(
+                $"Open file {FontAwesome6.FileImport}",
+                new Vector2(buttonWidth, buttonHeight));
+            if (openFileInvoked)
+                OpenFile();
+            ImGuiAccessibility.Button(
+                "song-library.open-file",
+                "Open MIDI Source",
+                OpenFile,
+                "Choose a MIDI Source from the Windows file dialog.",
+                invoked: openFileInvoked);
             ImGuiTheme.PopButton();
 
             RenderBrowser();

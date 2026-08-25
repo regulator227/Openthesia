@@ -6,42 +6,96 @@ namespace Openthesia.Settings;
 
 public static class DevicesManager
 {
-    public static InputDevice IDevice { get; private set; }
-    public static OutputDevice ODevice { get; private set; }
+    private const long DeviceCatalogRefreshMilliseconds = 1000;
+    private static readonly DisposableDeviceCatalog<InputDevice> InputCatalog = new(
+        () => InputDevice.GetAll().ToArray(),
+        device => device.Name);
+    private static readonly DisposableDeviceCatalog<OutputDevice> OutputCatalog = new(
+        () => OutputDevice.GetAll().ToArray(),
+        device => device.Name);
+    private static readonly object InputCatalogGate = new();
+    private static readonly object OutputCatalogGate = new();
+    private static IReadOnlyList<MidiDeviceDescriptor> _inputDescriptors =
+        Array.Empty<MidiDeviceDescriptor>();
+    private static IReadOnlyList<MidiDeviceDescriptor> _outputDescriptors =
+        Array.Empty<MidiDeviceDescriptor>();
+    private static long _inputDescriptorsAt;
+    private static long _outputDescriptorsAt;
+
+    public static InputDevice? IDevice { get; private set; }
+    public static OutputDevice? ODevice { get; private set; }
+    public static string? ActiveInputDeviceToken { get; private set; }
+    public static string? ActiveOutputDeviceToken { get; private set; }
+    public static string? ActiveInputDeviceName { get; private set; }
+    public static string? ActiveOutputDeviceName { get; private set; }
+
+    internal static IReadOnlyList<MidiDeviceDescriptor> GetInputDeviceDescriptors()
+    {
+        lock (InputCatalogGate)
+        {
+            var now = Environment.TickCount64;
+            if (_inputDescriptorsAt == 0 ||
+                now - _inputDescriptorsAt >= DeviceCatalogRefreshMilliseconds)
+            {
+                _inputDescriptors = InputCatalog.Describe();
+                _inputDescriptorsAt = now;
+            }
+            return _inputDescriptors;
+        }
+    }
+
+    internal static IReadOnlyList<MidiDeviceDescriptor> GetOutputDeviceDescriptors()
+    {
+        lock (OutputCatalogGate)
+        {
+            var now = Environment.TickCount64;
+            if (_outputDescriptorsAt == 0 ||
+                now - _outputDescriptorsAt >= DeviceCatalogRefreshMilliseconds)
+            {
+                _outputDescriptors = OutputCatalog.Describe();
+                _outputDescriptorsAt = now;
+            }
+            return _outputDescriptors;
+        }
+    }
 
     public static void SetInputDevice(int deviceIndex)
     {
-        if (IDevice != null)
-        {
+        var devices = GetInputDeviceDescriptors();
+        if (deviceIndex < 0 || deviceIndex >= devices.Count)
+            throw new ArgumentOutOfRangeException(nameof(deviceIndex));
+        if (!TrySetInputDevice(devices[deviceIndex].Token))
             ReleaseInputDevice();
-        }
-
-        IDevice = InputDevice.GetByIndex(deviceIndex);
-        IDevice.EventReceived += IOHandle.OnEventReceived;
-        IDevice.StartEventsListening();
     }
 
     public static void SetInputDevice(string deviceName)
     {
-        if (IDevice != null)
-        {
+        var descriptor = GetInputDeviceDescriptors()
+            .FirstOrDefault(device => device.Name == deviceName);
+        if (descriptor is null || !TrySetInputDevice(descriptor.Token))
             ReleaseInputDevice();
-        }
+    }
 
-        List<string> deviceNames = new();
-        foreach (var iDevice in InputDevice.GetAll())
+    public static bool TrySetInputDevice(string deviceToken)
+    {
+        var nextInputDevice = InputCatalog.Take(deviceToken);
+        if (nextInputDevice is null)
+            return false;
+
+        ReleaseInputDevice();
+        try
         {
-            deviceNames.Add(iDevice.Name);
+            nextInputDevice.EventReceived += IOHandle.OnEventReceived;
+            nextInputDevice.StartEventsListening();
+            IDevice = nextInputDevice;
+            ActiveInputDeviceToken = deviceToken;
+            ActiveInputDeviceName = nextInputDevice.Name;
+            return true;
         }
-
-        if (!deviceNames.Contains(deviceName))
-            return;
-
-        IDevice = InputDevice.GetByName(deviceName);
-        if (IDevice != null)
+        catch
         {
-            IDevice.EventReceived += IOHandle.OnEventReceived;
-            IDevice.StartEventsListening();
+            nextInputDevice.Dispose();
+            throw;
         }
     }
 
@@ -49,28 +103,35 @@ public static class DevicesManager
     {
         IDevice?.Dispose();
         IDevice = null;
+        ActiveInputDeviceToken = null;
+        ActiveInputDeviceName = null;
     }
 
     public static void SetOutputDevice(int deviceIndex)
     {
-        ReplaceOutputDevice(OutputDevice.GetByIndex(deviceIndex));
+        var devices = GetOutputDeviceDescriptors();
+        if (deviceIndex < 0 || deviceIndex >= devices.Count)
+            throw new ArgumentOutOfRangeException(nameof(deviceIndex));
+        if (!TrySetOutputDevice(devices[deviceIndex].Token))
+            ReleaseOutputDevice();
     }
 
     public static void SetOutputDevice(string deviceName)
     {
-        List<string> deviceNames = new();
-        foreach (var oDevice in OutputDevice.GetAll())
-        {
-            deviceNames.Add(oDevice.Name);
-        }
+        var descriptor = GetOutputDeviceDescriptors()
+            .FirstOrDefault(device => device.Name == deviceName);
+        if (descriptor is null || !TrySetOutputDevice(descriptor.Token))
+            ReleaseOutputDevice();
+    }
 
-        if (!deviceNames.Contains(deviceName))
-        {
-            ReplaceOutputDevice(null);
-            return;
-        }
+    public static bool TrySetOutputDevice(string deviceToken)
+    {
+        var nextOutputDevice = OutputCatalog.Take(deviceToken);
+        if (nextOutputDevice is null)
+            return false;
 
-        ReplaceOutputDevice(OutputDevice.GetByName(deviceName));
+        ReplaceOutputDevice(nextOutputDevice, deviceToken, nextOutputDevice.Name);
+        return true;
     }
 
     public static void ReleaseOutputDevice()
@@ -78,13 +139,18 @@ public static class DevicesManager
         ReplaceOutputDevice(null);
     }
 
-    private static void ReplaceOutputDevice(OutputDevice? nextOutputDevice)
+    private static void ReplaceOutputDevice(
+        OutputDevice? nextOutputDevice,
+        string? nextOutputDeviceToken = null,
+        string? nextOutputDeviceName = null)
     {
         MidiPracticeSession.ReconfigureLightedKeyboardOutput(
             () =>
             {
                 var previousOutputDevice = ODevice;
                 ODevice = null;
+                ActiveOutputDeviceToken = null;
+                ActiveOutputDeviceName = null;
                 try
                 {
                     previousOutputDevice?.Dispose();
@@ -94,6 +160,8 @@ public static class DevicesManager
                     nextOutputDevice.EventSent += IOHandle.OnEventSent;
                     nextOutputDevice.PrepareForEventsSending();
                     ODevice = nextOutputDevice;
+                    ActiveOutputDeviceToken = nextOutputDeviceToken;
+                    ActiveOutputDeviceName = nextOutputDeviceName;
                 }
                 catch
                 {

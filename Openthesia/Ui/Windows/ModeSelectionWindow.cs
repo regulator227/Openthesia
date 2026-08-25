@@ -2,11 +2,14 @@
 using ImGuiNET;
 using Melanchall.DryWetMidi.Interaction;
 using Openthesia.Core;
+using Openthesia.Core.Accessibility;
 using Openthesia.Core.Midi;
 using Openthesia.Core.Practice;
 using Openthesia.Core.Songs;
 using Openthesia.Settings;
 using Openthesia.Ui.Helpers;
+using Openthesia.Ui.Accessibility;
+using System.Globalization;
 using System.Numerics;
 
 namespace Openthesia.Ui.Windows;
@@ -62,20 +65,30 @@ public class ModeSelectionWindow : ImGuiWindow
             RenderRecentProgress();
 
             if (_practiceWarning is not null)
+            {
                 ImGui.TextWrapped(_practiceWarning);
+                ImGuiAccessibility.Text(
+                    "practice-setup.warning",
+                    "Practice setup status",
+                    _practiceWarning,
+                    liveSetting: AccessibilityLiveSetting.Polite);
+            }
 
             ImGui.SeparatorText("Start");
             RenderButton(
+                "practice-setup.performance-visualization",
                 "Performance Visualization",
                 "Listen with the selected visualization.",
                 "#31CB15",
                 SetupVisualization);
             RenderButton(
+                "practice-setup.start-practice",
                 $"Practice: {PracticeModeLabel(_practicePreferences.Mode)}",
                 "Practice with accuracy and timing feedback.",
                 "#0EA5E9",
                 SetupPractice);
             RenderButton(
+                "practice-setup.assign-hands",
                 "Assign Hands",
                 "Author left- and right-hand assignments.",
                 "#772525",
@@ -89,11 +102,19 @@ public class ModeSelectionWindow : ImGuiWindow
     {
         ImGui.PushFont(FontController.Font16_Icon16);
         ImGui.SetCursorScreenPos(ImGuiUtils.FixedSize(new Vector2(22, 50)));
-        if (ImGui.Button($"{FontAwesome6.ArrowLeftLong} Back", ImGuiUtils.FixedSize(new Vector2(120, 50))) ||
-            EscapeReturns())
-        {
-            WindowsManager.SetWindow(Enums.Windows.MidiBrowser);
-        }
+        void GoBack() => WindowsManager.SetWindow(Enums.Windows.MidiBrowser);
+        var backInvoked = ImGui.Button(
+                              $"{FontAwesome6.ArrowLeftLong} Back",
+                              ImGuiUtils.FixedSize(new Vector2(120, 50))) ||
+                          EscapeReturns();
+        if (backInvoked)
+            GoBack();
+        ImGuiAccessibility.Button(
+            "practice-setup.back",
+            "Back",
+            GoBack,
+            "Return to Song and Chart selection.",
+            invoked: backInvoked);
         ImGui.PopFont();
     }
 
@@ -108,10 +129,19 @@ public class ModeSelectionWindow : ImGuiWindow
     {
         ImGui.PushFont(FontController.GetFontOfSize(22));
         ImGui.TextWrapped(text);
+        ImGuiAccessibility.Text(
+            "practice-setup.chart",
+            "Selected Chart",
+            text);
         ImGui.PopFont();
     }
 
-    private static void RenderButton(string label, string description, string color, Action onClick)
+    private static void RenderButton(
+        string id,
+        string label,
+        string description,
+        string color,
+        Action onClick)
     {
         ImGui.TextWrapped(description);
         ImGuiTheme.PushButton(
@@ -122,10 +152,14 @@ public class ModeSelectionWindow : ImGuiWindow
 
         ImGui.PushFont(FontController.GetFontOfSize(22));
         var buttonWidth = Math.Max(100f, ImGui.GetContentRegionAvail().X);
-        if (ImGui.Button(label, new Vector2(buttonWidth, ImGuiUtils.FixedSize(new Vector2(54)).Y)))
+        var invoked = ImGui.Button(
+            label,
+            new Vector2(buttonWidth, ImGuiUtils.FixedSize(new Vector2(54)).Y));
+        if (invoked)
         {
             onClick.Invoke();
         }
+        ImGuiAccessibility.Button(id, label, onClick, description, invoked: invoked);
         ImGui.PopFont();
         ImGuiTheme.PopButton();
     }
@@ -136,74 +170,78 @@ public class ModeSelectionWindow : ImGuiWindow
             ImGuiUtils.FixedSize(new Vector2(420)).X,
             Math.Max(100f, ImGui.GetContentRegionAvail().X));
         ImGui.SetNextItemWidth(controlWidth);
-        if (ImGui.BeginCombo("##PracticeMode", $"Mode: {PracticeModeLabel(_practicePreferences.Mode)}"))
-        {
-            foreach (var mode in Enum.GetValues<PracticeMode>())
-            {
-                if (ImGui.Selectable(PracticeModeLabel(mode), mode == _practicePreferences.Mode))
-                    _practicePreferences = _practicePreferences with { Mode = mode };
-            }
-            ImGui.EndCombo();
-        }
+        ImGuiAccessibility.ComboBox(
+            "practice-setup.mode",
+            "Practice Mode",
+            _practicePreferences.Mode,
+            Enum.GetValues<PracticeMode>().Select(mode => (
+                $"practice-setup.mode.{mode.ToString().ToLowerInvariant()}",
+                PracticeModeLabel(mode),
+                mode)),
+            mode => _practicePreferences = _practicePreferences with { Mode = mode },
+            "Choose how Chart time, guidance, and feedback behave.");
 
         ImGui.SetNextItemWidth(controlWidth);
-        if (ImGui.BeginCombo("##RequiredHands", $"Required Hands: {_practicePreferences.RequiredHands}"))
-        {
-            foreach (var hands in Enum.GetValues<RequiredHands>())
-            {
-                if (ImGui.Selectable(hands.ToString(), hands == _practicePreferences.RequiredHands))
-                    _practicePreferences = _practicePreferences.WithRequiredHands(hands);
-            }
-            ImGui.EndCombo();
-        }
+        ImGuiAccessibility.ComboBox(
+            "practice-setup.required-hands",
+            "Required Hands",
+            _practicePreferences.RequiredHands,
+            Enum.GetValues<RequiredHands>().Select(hands => (
+                $"practice-setup.required-hands.{hands.ToString().ToLowerInvariant()}",
+                hands.ToString(),
+                hands)),
+            hands => _practicePreferences = _practicePreferences.WithRequiredHands(hands));
 
         ImGui.SetNextItemWidth(controlWidth);
         ImGui.BeginDisabled(_practicePreferences.RequiredHands == RequiredHands.Both);
-        if (ImGui.BeginCombo("##Accompaniment", $"Accompaniment: {_practicePreferences.Accompaniment}"))
-        {
-            foreach (var accompaniment in Enum.GetValues<Accompaniment>())
-            {
-                if (ImGui.Selectable(
-                    accompaniment.ToString(),
-                    accompaniment == _practicePreferences.Accompaniment))
-                {
-                    _practicePreferences = _practicePreferences with { Accompaniment = accompaniment };
-                }
-            }
-            ImGui.EndCombo();
-        }
+        var accompanimentEnabled = _practicePreferences.RequiredHands != RequiredHands.Both;
+        ImGuiAccessibility.ComboBox(
+            "practice-setup.accompaniment",
+            "Accompaniment",
+            _practicePreferences.Accompaniment,
+            Enum.GetValues<Accompaniment>().Select(accompaniment => (
+                $"practice-setup.accompaniment.{accompaniment.ToString().ToLowerInvariant()}",
+                accompaniment.ToString(),
+                accompaniment)),
+            accompaniment => _practicePreferences = _practicePreferences with { Accompaniment = accompaniment },
+            "Choose whether Chart notes outside the Required Hands play automatically.",
+            accompanimentEnabled);
         ImGui.EndDisabled();
 
         ImGui.SetNextItemWidth(controlWidth);
-        if (ImGui.BeginCombo("##PracticeTempo", $"Tempo: {_practicePreferences.TempoRatio:0.##}x"))
-        {
-            foreach (var tempoRatio in new[] { 0.25m, 0.5m, 0.75m, 1m, 1.25m, 1.5m, 2m })
-            {
-                if (ImGui.Selectable(
-                    $"{tempoRatio:0.##}x",
-                    tempoRatio == _practicePreferences.TempoRatio))
-                {
-                    _practicePreferences = _practicePreferences with { TempoRatio = tempoRatio };
-                }
-            }
-            ImGui.EndCombo();
-        }
+        var tempoOptions = new[] { 0.25m, 0.5m, 0.75m, 1m, 1.25m, 1.5m, 2m };
+        ImGuiAccessibility.ComboBox(
+            "practice-setup.tempo",
+            "Tempo",
+            _practicePreferences.TempoRatio,
+            tempoOptions.Select(tempoRatio => (
+                $"practice-setup.tempo.{tempoRatio.ToString(CultureInfo.InvariantCulture).Replace('.', '-')}",
+                $"{tempoRatio:0.##}x",
+                tempoRatio)),
+            tempoRatio => _practicePreferences = _practicePreferences with { TempoRatio = tempoRatio });
 
         ImGui.SetNextItemWidth(controlWidth);
-        if (ImGui.BeginCombo("##PracticeCountIn", $"Count-in: {_practicePreferences.CountInBeats} beats"))
-        {
-            foreach (var beats in PracticePreferences.SupportedCountInBeats)
-            {
-                var label = beats == 0 ? "No count-in" : $"{beats} beats";
-                if (ImGui.Selectable(label, beats == _practicePreferences.CountInBeats))
-                    _practicePreferences = _practicePreferences with { CountInBeats = beats };
-            }
-            ImGui.EndCombo();
-        }
+        ImGuiAccessibility.ComboBox(
+            "practice-setup.count-in",
+            "Count-in",
+            _practicePreferences.CountInBeats,
+            PracticePreferences.SupportedCountInBeats.Select(beats => (
+                $"practice-setup.count-in.{beats}",
+                beats == 0 ? "No count-in" : $"{beats} beats",
+                beats)),
+            beats => _practicePreferences = _practicePreferences with { CountInBeats = beats });
 
         var metronomeEnabled = _practicePreferences.MetronomeEnabled;
         if (ImGui.Checkbox("Metronome", ref metronomeEnabled))
             _practicePreferences = _practicePreferences with { MetronomeEnabled = metronomeEnabled };
+        ImGuiAccessibility.Toggle(
+            "practice-setup.metronome",
+            "Metronome",
+            _practicePreferences.MetronomeEnabled,
+            () => _practicePreferences = _practicePreferences with
+            {
+                MetronomeEnabled = !_practicePreferences.MetronomeEnabled
+            });
 
         var countInOnLoopRepeat = _practicePreferences.CountInOnLoopRepeat;
         if (ImGui.Checkbox("Count in on every loop pass", ref countInOnLoopRepeat))
@@ -213,24 +251,35 @@ public class ModeSelectionWindow : ImGuiWindow
                 CountInOnLoopRepeat = countInOnLoopRepeat
             };
         }
+        ImGuiAccessibility.Toggle(
+            "practice-setup.count-in-on-loop-repeat",
+            "Count in on every loop pass",
+            _practicePreferences.CountInOnLoopRepeat,
+            () => _practicePreferences = _practicePreferences with
+            {
+                CountInOnLoopRepeat = !_practicePreferences.CountInOnLoopRepeat
+            });
 
         var selectedLoop = _selectedLoopId is { } selectedId
             ? _practiceNavigation.Loops.FirstOrDefault(loop => loop.Id == selectedId)
             : null;
         ImGui.SetNextItemWidth(controlWidth);
-        if (ImGui.BeginCombo(
-                "##PracticeRange",
-                selectedLoop is null ? "Range: Full Chart" : $"Loop: {selectedLoop.Name}"))
-        {
-            if (ImGui.Selectable("Full Chart", _selectedLoopId is null))
-                _selectedLoopId = null;
-            foreach (var loop in _practiceNavigation.Loops.OrderBy(loop => loop.Range.Start))
+        var selectedRange = selectedLoop?.Id.ToString("D") ?? "full";
+        var rangeOptions = new[]
             {
-                if (ImGui.Selectable(loop.Name, loop.Id == _selectedLoopId))
-                    _selectedLoopId = loop.Id;
+                ("practice-setup.range.full", "Full Chart", "full")
             }
-            ImGui.EndCombo();
-        }
+            .Concat(_practiceNavigation.Loops.OrderBy(loop => loop.Range.Start).Select(loop => (
+                $"practice-setup.range.{loop.Id:D}",
+                loop.Name,
+                loop.Id.ToString("D"))));
+        ImGuiAccessibility.ComboBox(
+            "practice-setup.range",
+            "Practice range",
+            selectedRange,
+            rangeOptions,
+            value => _selectedLoopId = value == "full" ? null : Guid.Parse(value),
+            "Choose the full Chart or a saved loop.");
     }
 
     private static void RenderRecentProgress()
@@ -288,7 +337,12 @@ public class ModeSelectionWindow : ImGuiWindow
         progressParts.Add(
             $"Trend A/E/T · {progress.RecentTrend.Accuracy}/{progress.RecentTrend.Extras}/{progress.RecentTrend.Timing}");
         ImGui.SeparatorText("Recent progress");
-        ImGui.TextWrapped($"{latestLine}\n{string.Join(" · ", progressParts)}");
+        var summary = $"{latestLine}\n{string.Join(" · ", progressParts)}";
+        ImGui.TextWrapped(summary);
+        ImGuiAccessibility.Text(
+            "practice-setup.recent-progress",
+            "Recent Practice progress",
+            summary);
     }
 
     private static void RenderNonComparableHistory(PracticeResult? latest)
@@ -303,6 +357,10 @@ public class ModeSelectionWindow : ImGuiWindow
                       $"{latest.Accuracy.ExtraNotes} Extra{assisted}";
         ImGui.SeparatorText("Recent progress");
         ImGui.TextWrapped(summary);
+        ImGuiAccessibility.Text(
+            "practice-setup.recent-progress",
+            "Recent Practice progress",
+            summary);
     }
 
     private static string PersonalBestStatus(PracticeResult latest, PracticePersonalBest best)
