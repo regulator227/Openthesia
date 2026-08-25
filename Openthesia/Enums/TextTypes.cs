@@ -5,4 +5,5 @@ public enum TextTypes
     NoteName,
     Velocity,
     Octave,
+    PitchAndOctave,
 }

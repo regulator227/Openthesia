@@ -29,8 +29,9 @@ Run the journey at Windows display scaling of 100%, 150%, and 200%, each with te
 
 - In each of the four built-in Windows contrast themes, text, control boundaries, necessary graphics, and focus cues use the system palette.
 - Hand, target, judgment, selection, and control state remain understandable without color.
+- The `Pitch + octave` note-label mode renders compact labels such as `C4` and `F#4` with a contrast-safe backdrop.
 - System follows Windows animation and advanced-effects settings.
-- Reduce removes the matrix background, pulse, glow, velocity opacity, and other transparency-dependent cues.
+- Reduce removes the matrix background, grid transparency, pulse, glow, velocity opacity, easing/inertial panning, and other transparency-dependent cues.
 - Full never overrides a Windows contrast theme.
 - Falling notes retain static current-target/status text and keyboard-operable Pause and Stop.
 - No effect flashes more than three times per second.

@@ -90,16 +90,19 @@ public class Drawings
 
     public static string GetNoteTextAs(TextTypes textType, Note note)
     {
+        var pitch = note.NoteName.ToString().Replace("Sharp", "#");
         switch (textType)
         {
             case TextTypes.NoteName:
-                return note.NoteName.ToString();
+                return pitch;
             case TextTypes.Velocity:
                 return note.Velocity.ToString();
             case TextTypes.Octave:
                 return note.Octave.ToString();
+            case TextTypes.PitchAndOctave:
+                return $"{pitch}{note.Octave}";
             default:
-                return note.NoteName.ToString();
+                return pitch;
         }
     }
 }

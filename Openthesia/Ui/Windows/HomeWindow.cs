@@ -29,7 +29,8 @@ public class HomeWindow : ImGuiWindow
 
     private void DrawTitle()
     {
-        float alpha = AccessibilityRuntime.Presentation.AllowDecorativeMotion
+        float alpha = AccessibilityRuntime.Presentation.AllowDecorativeMotion &&
+                      AccessibilityRuntime.Presentation.AllowTransparency
             ? 0.5f * (1.0f + MathF.Sin(2.0f * MathF.PI * _timer))
             : 1f;
         if (_timer >= 1f)
@@ -38,10 +39,16 @@ public class HomeWindow : ImGuiWindow
         using (AutoFont titleFont = new(FontController.Title))
         {
             var textPos = new Vector2(ImGui.GetIO().DisplaySize.X / 2 - ImGui.CalcTextSize(_title).X / 2, ImGui.GetIO().DisplaySize.Y / 10);
-            ImGui.SetCursorPos(textPos + _titleShadowOffset);
-            ImGui.GetWindowDrawList().AddText(textPos + _titleShadowOffset, _titleShadowColor, _title);
+            if (AccessibilityRuntime.Presentation.AllowTransparency)
+            {
+                ImGui.SetCursorPos(textPos + _titleShadowOffset);
+                ImGui.GetWindowDrawList().AddText(textPos + _titleShadowOffset, _titleShadowColor, _title);
+            }
             ImGui.SetCursorPos(textPos);
-            ImGui.TextColored(new Vector4(1, 1, 1, alpha), _title);
+            var titleColor = AccessibilityRuntime.Presentation.UseSystemContrast
+                ? AccessibilityRuntime.ContrastPalette.WindowText
+                : new Vector4(1, 1, 1, alpha);
+            ImGui.TextColored(titleColor, _title);
         }
     }
 

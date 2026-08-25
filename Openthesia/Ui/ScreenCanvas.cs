@@ -62,6 +62,9 @@ public class ScreenCanvas
 
     private static void RenderGrid()
     {
+        if (!AccessibilityRuntime.Presentation.AllowTransparency)
+            return;
+
         var drawList = ImGui.GetWindowDrawList();
         for (int key = 0; key < 52; key++)
         {
@@ -448,15 +451,11 @@ public class ScreenCanvas
                 {
                     ImGui.PushFont(FontController.Font16_Icon12);
                     string noteInfo = Drawings.GetNoteTextAs(TextType, note);
-                    
-                    if (TextType == TextTypes.NoteName)
-                        noteInfo = noteInfo.Replace("Sharp", "#");
                     var textSize = ImGui.CalcTextSize(noteInfo) / 2;
                     var pos = new Vector2(PianoRenderer.P.X + PianoRenderer.BlackNoteToKey.GetValueOrDefault(note.NoteNumber, 0) * PianoRenderer.Width + PianoRenderer.Width - textSize.X + 1,
                         py2 - length * 100 / 2 - textSize.Y);
 
-                    drawList.AddText(pos + new Vector2(1), ImGui.GetColorU32(new Vector4(0, 0, 0, 1)), noteInfo);
-                    drawList.AddText(pos, ImGui.GetColorU32(Vector4.One), noteInfo);
+                    DrawNoteLabel(drawList, pos, noteInfo);
                     ImGui.PopFont();
                 }
                 if (IsPracticeMode)
@@ -514,8 +513,7 @@ public class ScreenCanvas
                     string noteInfo = Drawings.GetNoteTextAs(TextType, note);
                     var pos = new Vector2(PianoRenderer.P.X + PianoRenderer.WhiteNoteToKey.GetValueOrDefault(note.NoteNumber, 0) * PianoRenderer.Width + PianoRenderer.Width / 2 - ImGui.CalcTextSize(noteInfo).X / 2,
                         py2 - length * 100 / 2 - ImGui.CalcTextSize(noteInfo).Y / 2);
-                    drawList.AddText(pos + new Vector2(1), ImGui.GetColorU32(new Vector4(0, 0, 0, 1)), noteInfo);
-                    drawList.AddText(pos, ImGui.GetColorU32(Vector4.One), noteInfo);
+                    DrawNoteLabel(drawList, pos, noteInfo);
                     ImGui.PopFont();
                 }
                 if (IsPracticeMode)
@@ -556,6 +554,29 @@ public class ScreenCanvas
             ImGui.GetColorU32(new Vector4(0, 0, 0, 1)));
         drawList.AddText(position, ImGui.GetColorU32(Vector4.One), label);
         ImGui.PopFont();
+    }
+
+    private static void DrawNoteLabel(
+        ImDrawListPtr drawList,
+        Vector2 position,
+        string label)
+    {
+        var background = AccessibilityRuntime.Presentation.UseSystemContrast
+            ? AccessibilityRuntime.ContrastPalette.Window
+            : new Vector4(
+                ThemeManager.MainBgCol.X,
+                ThemeManager.MainBgCol.Y,
+                ThemeManager.MainBgCol.Z,
+                1f);
+        var text = AccessibilityRuntime.Presentation.UseSystemContrast
+            ? AccessibilityRuntime.ContrastPalette.WindowText
+            : ImGuiTheme.ReadableText(background);
+        var padding = Vector2.One * Math.Max(1f, FontController.DSF);
+        drawList.AddRectFilled(
+            position - padding,
+            position + ImGui.CalcTextSize(label) + padding,
+            ImGui.GetColorU32(background));
+        drawList.AddText(position, ImGui.GetColorU32(text), label);
     }
 
     private static void DrawPracticeTarget()
@@ -673,14 +694,29 @@ public class ScreenCanvas
         if (ImGui.IsMouseHoveringRect(Vector2.Zero, new(ImGui.GetIO().DisplaySize.X, PianoRenderer.P.Y)) && ImGui.IsMouseDown(panButton))
         {
             ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeNS);
-            const float interpolationFactor = 0.05f;
-            const float decelerationFactor = 0.75f;
             float mouseDeltaY = ImGui.GetIO().MouseDelta.Y;
             if (UpDirection) mouseDeltaY = -mouseDeltaY;
-            _panVelocity = Lerp(_panVelocity, mouseDeltaY, interpolationFactor);
-            _panVelocity *= decelerationFactor;
-            float targetTime = Math.Clamp(MidiPlayer.Seconds + _panVelocity, 0, (float)MidiPlayer.Playback.GetDuration<MetricTimeSpan>().TotalSeconds);
-            var newTime = Lerp(MidiPlayer.Seconds, targetTime, interpolationFactor);
+            float newTime;
+            if (AccessibilityRuntime.Presentation.AllowDecorativeMotion)
+            {
+                const float interpolationFactor = 0.05f;
+                const float decelerationFactor = 0.75f;
+                _panVelocity = Lerp(_panVelocity, mouseDeltaY, interpolationFactor);
+                _panVelocity *= decelerationFactor;
+                var targetTime = Math.Clamp(
+                    MidiPlayer.Seconds + _panVelocity,
+                    0,
+                    (float)MidiPlayer.Playback.GetDuration<MetricTimeSpan>().TotalSeconds);
+                newTime = Lerp(MidiPlayer.Seconds, targetTime, interpolationFactor);
+            }
+            else
+            {
+                _panVelocity = 0;
+                newTime = Math.Clamp(
+                    MidiPlayer.Seconds + mouseDeltaY * 0.01f,
+                    0,
+                    (float)MidiPlayer.Playback.GetDuration<MetricTimeSpan>().TotalSeconds);
+            }
             SeekPlaybackTo(newTime);
         }
 
@@ -1572,6 +1608,18 @@ public class ScreenCanvas
         ImGui.EndChild();
     }
 
+    private static string NoteLabelName(TextTypes textType)
+    {
+        return textType switch
+        {
+            TextTypes.NoteName => "Pitch",
+            TextTypes.Velocity => "Velocity",
+            TextTypes.Octave => "Octave",
+            TextTypes.PitchAndOctave => "Pitch + octave",
+            _ => "Pitch"
+        };
+    }
+
     private static void DrawPlaybackRightControls()
     {
         var display = ImGui.GetIO().DisplaySize;
@@ -1606,11 +1654,11 @@ public class ScreenCanvas
             }
 
             ImGui.SetNextItemWidth(popupWidth);
-            if (ImGui.BeginCombo("Label content", TextType.ToString()))
+            if (ImGui.BeginCombo("Label content", NoteLabelName(TextType)))
             {
                 foreach (var textType in Enum.GetValues<TextTypes>())
                 {
-                    if (ImGui.Selectable(textType.ToString(), textType == TextType))
+                    if (ImGui.Selectable(NoteLabelName(textType), textType == TextType))
                         SetTextType(textType);
                 }
                 ImGui.EndCombo();

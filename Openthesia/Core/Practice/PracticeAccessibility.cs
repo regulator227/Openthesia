@@ -22,7 +22,8 @@ public static class PracticeAccessibility
         IReadOnlyList<PracticeFeedback> feedback,
         PracticeNavigation navigation,
         PracticeLoop? activeLoop,
-        RequiredHands requiredHands = RequiredHands.Both)
+        RequiredHands requiredHands = RequiredHands.Both,
+        PracticeTarget? nextTarget = null)
     {
         ArgumentNullException.ThrowIfNull(chart);
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -30,10 +31,44 @@ public static class PracticeAccessibility
         ArgumentNullException.ThrowIfNull(navigation);
 
         var chartIndex = ChartIndexes.GetValue(chart, value => new ChartIndex(value));
-        var target = snapshot.Target ?? chartIndex.NextRequiredTarget(
+        nextTarget ??= chartIndex.NextRequiredTarget(
             snapshot.Position,
             requiredHands,
             activeLoop?.Range);
+        var nextBookmark = navigation.FindBookmark(
+            snapshot.Position,
+            PracticeNavigationDirection.Next);
+        return DescribePrepared(
+            chart,
+            snapshot,
+            feedback,
+            activeLoop,
+            requiredHands,
+            nextTarget,
+            nextBookmark);
+    }
+
+    internal static void Prepare(PracticeChart chart)
+    {
+        ArgumentNullException.ThrowIfNull(chart);
+        ChartIndexes.GetValue(chart, value => new ChartIndex(value));
+    }
+
+    internal static PracticeAccessibilityDescription DescribePrepared(
+        PracticeChart chart,
+        PracticeSessionSnapshot snapshot,
+        IReadOnlyList<PracticeFeedback> feedback,
+        PracticeLoop? activeLoop,
+        RequiredHands requiredHands,
+        PracticeTarget? nextTarget,
+        PracticeBookmark? nextBookmark)
+    {
+        ArgumentNullException.ThrowIfNull(chart);
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(feedback);
+
+        var chartIndex = ChartIndexes.GetValue(chart, value => new ChartIndex(value));
+        var target = snapshot.Target ?? nextTarget;
         var targetParts = target?.Pitches
                 .Distinct()
                 .OrderBy(pitch => pitch)
@@ -48,9 +83,6 @@ public static class PracticeAccessibility
         var navigationParts = new List<string>();
         if (activeLoop is not null)
             navigationParts.Add($"Active loop: {activeLoop.Name}");
-        var nextBookmark = navigation.FindBookmark(
-            snapshot.Position,
-            PracticeNavigationDirection.Next);
         if (nextBookmark is not null)
         {
             navigationParts.Add(

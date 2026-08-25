@@ -134,6 +134,36 @@ public sealed class PracticeAccessibilityTests
         Assert.Equal("Next target: E4 · Right", description.TargetText);
     }
 
+    [Fact]
+    public void SessionProvidedNextTargetWinsAtAnUnchangedPlayhead()
+    {
+        var firstOnset = ChartTime.Zero;
+        var nextOnset = ChartTime.FromMicroseconds(500_000);
+        var chart = new PracticeChart(
+            ChartId.Parse($"chart-v1-sha256:{new string('f', 64)}"),
+            ChartTime.FromMicroseconds(1_000_000),
+            new[]
+            {
+                new PracticeChartNote(1, 60, firstOnset, ChartTime.FromMicroseconds(250_000), PianoHand.Right),
+                new PracticeChartNote(2, 64, nextOnset, ChartTime.FromMicroseconds(250_000), PianoHand.Right)
+            });
+        var snapshot = new PracticeSessionSnapshot(
+            PracticeSessionState.LearnerPaused,
+            firstOnset,
+            Target: null);
+
+        var description = PracticeAccessibility.Describe(
+            chart,
+            snapshot,
+            Array.Empty<PracticeFeedback>(),
+            PracticeNavigation.Empty,
+            activeLoop: null,
+            RequiredHands.Right,
+            new PracticeTarget(nextOnset, new byte[] { 64 }));
+
+        Assert.Equal("Next target: E4 · Right", description.TargetText);
+    }
+
     [Theory]
     [InlineData(RequiredHands.Left, "Current target: C4 · Left")]
     [InlineData(RequiredHands.Right, "Current target: C4 · Right")]

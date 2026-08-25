@@ -27,10 +27,37 @@ public static class MidiPracticeSession
     private static PracticeNavigation _navigation = PracticeNavigation.Empty;
     private static Guid? _activeLoopId;
     private static string? _navigationWarning;
+    private static AccessibilityCacheKey? _accessibilityCacheKey;
+    private static PracticeAccessibilityDescription? _accessibilityDescription;
+    private static long _accessibilityStateVersion;
+    private static long _navigationVersion;
 
     private const int ClickChannel = 9;
     private const int ClickNote = 77;
     private const int AccentClickNote = 76;
+
+    private readonly record struct AccessibilityCacheKey(
+        PracticeChart Chart,
+        bool CurrentTarget,
+        PracticeTarget? Target,
+        IReadOnlyList<PracticeFeedback> Feedback,
+        bool FeedbackVisible,
+        long NavigationVersion,
+        Guid? NextBookmarkId,
+        Guid? ActiveLoopId,
+        RequiredHands RequiredHands);
+
+    private sealed record AccessibilityWork(
+        AccessibilityCacheKey Key,
+        long StateVersion,
+        PracticeChart Chart,
+        PracticeSessionSnapshot Snapshot,
+        IReadOnlyList<PracticeFeedback> Feedback,
+        bool FeedbackVisible,
+        PracticeLoop? ActiveLoop,
+        RequiredHands RequiredHands,
+        PracticeTarget? NextTarget,
+        PracticeBookmark? NextBookmark);
 
     public static bool IsActive
     {
@@ -72,19 +99,72 @@ public static class MidiPracticeSession
     {
         get
         {
-            lock (Sync)
+            while (true)
             {
-                return _chart is not null && _session is not null
-                    ? PracticeAccessibility.Describe(
+                AccessibilityWork work;
+                lock (Sync)
+                {
+                    if (_chart is null || _session is null)
+                        return null;
+
+                    var feedbackVisible = DateTimeOffset.UtcNow <= _feedbackExpiresAtUtc;
+                    var feedback = feedbackVisible
+                        ? _latestFeedback
+                        : Array.Empty<PracticeFeedback>();
+                    var snapshot = _session.Snapshot;
+                    var nextTarget = _session.AccessibilityTarget;
+                    var activeLoop = ActiveLoopCore();
+                    var nextBookmark = _navigation.FindBookmark(
+                        snapshot.Position,
+                        PracticeNavigationDirection.Next);
+                    var requiredHands = _plan?.RequiredHands ?? RequiredHands.Both;
+                    var key = new AccessibilityCacheKey(
                         _chart,
-                        _session.Snapshot,
-                        DateTimeOffset.UtcNow <= _feedbackExpiresAtUtc
-                            ? _latestFeedback
-                            : Array.Empty<PracticeFeedback>(),
-                        _navigation,
-                        ActiveLoopCore(),
-                        _plan?.RequiredHands ?? RequiredHands.Both)
-                    : null;
+                        snapshot.Target is not null,
+                        nextTarget,
+                        feedback,
+                        feedbackVisible,
+                        _navigationVersion,
+                        nextBookmark?.Id,
+                        activeLoop?.Id,
+                        requiredHands);
+                    if (key == _accessibilityCacheKey)
+                        return _accessibilityDescription;
+
+                    work = new AccessibilityWork(
+                        key,
+                        _accessibilityStateVersion,
+                        _chart,
+                        snapshot,
+                        feedback,
+                        feedbackVisible,
+                        activeLoop,
+                        requiredHands,
+                        nextTarget,
+                        nextBookmark);
+                }
+
+                var description = PracticeAccessibility.DescribePrepared(
+                    work.Chart,
+                    work.Snapshot,
+                    work.Feedback,
+                    work.ActiveLoop,
+                    work.RequiredHands,
+                    work.NextTarget,
+                    work.NextBookmark);
+                lock (Sync)
+                {
+                    var feedbackStillVisible = DateTimeOffset.UtcNow <= _feedbackExpiresAtUtc;
+                    if (_accessibilityStateVersion != work.StateVersion ||
+                        feedbackStillVisible != work.FeedbackVisible)
+                    {
+                        continue;
+                    }
+
+                    _accessibilityCacheKey = work.Key;
+                    _accessibilityDescription = description;
+                    return description;
+                }
             }
         }
     }
@@ -200,11 +280,12 @@ public static class MidiPracticeSession
         lock (Sync)
         {
             _navigation = loaded.Navigation;
+            NavigationChanged();
             _navigationWarning = loaded.Warning;
             if (_activeLoopId is { } activeLoopId &&
                 _navigation.Loops.All(loop => loop.Id != activeLoopId))
             {
-                _activeLoopId = null;
+                SetActiveLoopId(null);
             }
         }
         return loaded;
@@ -224,6 +305,7 @@ public static class MidiPracticeSession
             .Select(isRight => isRight ? PianoHand.Right : PianoHand.Left)
             .ToArray();
         var chart = PracticeChartFactory.FromMidi(context.ChartId, MidiFileData.MidiFile, hands);
+        PracticeAccessibility.Prepare(chart);
         var loadedNavigation = new PracticeNavigationStore(ProgramData.DataPath).Load(
             learner.Id,
             context.ChartId,
@@ -241,8 +323,9 @@ public static class MidiPracticeSession
             _learnerId = learner.Id;
             _preferences = preferences;
             _navigation = loadedNavigation.Navigation;
+            NavigationChanged();
             _navigationWarning = loadedNavigation.Warning;
-            _activeLoopId = activeLoop?.Id;
+            SetActiveLoopId(activeLoop?.Id);
             return StartCore(chart, plan, preserveLatestResult: false);
         }
     }
@@ -384,14 +467,14 @@ public static class MidiPracticeSession
 
             if (_session is null || _chart is null || _preferences is null)
             {
-                _activeLoopId = loop?.Id;
+                SetActiveLoopId(loop?.Id);
                 return null;
             }
 
             var plan = CreatePlan(_preferences, loop?.Range);
             var warning = ReplaceSession(_chart, plan, preserveLatestResult: true);
             if (warning is null)
-                _activeLoopId = loop?.Id;
+                SetActiveLoopId(loop?.Id);
             return warning;
         }
     }
@@ -415,6 +498,7 @@ public static class MidiPracticeSession
                 return SetNavigationWarning(saved.Warning);
 
             _navigation = candidate;
+            NavigationChanged();
             _navigationWarning = null;
             if (_activeLoopId == id &&
                 previousLoop?.Range != range &&
@@ -444,6 +528,7 @@ public static class MidiPracticeSession
                 return SetNavigationWarning(saved.Warning);
 
             _navigation = candidate;
+            NavigationChanged();
             _navigationWarning = null;
             return _activeLoopId == id ? SetActiveLoop(null) : null;
         }
@@ -465,6 +550,7 @@ public static class MidiPracticeSession
                 return SetNavigationWarning(saved.Warning);
 
             _navigation = candidate;
+            NavigationChanged();
             _navigationWarning = null;
             return null;
         }
@@ -486,6 +572,7 @@ public static class MidiPracticeSession
                 return SetNavigationWarning(saved.Warning);
 
             _navigation = candidate;
+            NavigationChanged();
             _navigationWarning = null;
             return null;
         }
@@ -634,6 +721,9 @@ public static class MidiPracticeSession
         _plan = null;
         _assessment = null;
         _signalClock = null;
+        _accessibilityCacheKey = null;
+        _accessibilityDescription = null;
+        _accessibilityStateVersion++;
         StopClick();
         PracticePlaybackFilter.Disable();
     }
@@ -643,6 +733,7 @@ public static class MidiPracticeSession
         if (transition.Error is not null)
             return;
 
+        _accessibilityStateVersion++;
         var assessed = _assessment?.Apply(transition, DateTimeOffset.UtcNow);
         if (assessed is not null)
         {
@@ -721,7 +812,7 @@ public static class MidiPracticeSession
 
         var plan = CreatePlan(_preferences, range: null);
         if (disableLoop)
-            _activeLoopId = null;
+            SetActiveLoopId(null);
 
         var countInBeats = _preferences.CountInBeats;
         var warning = ReplaceSession(
@@ -781,6 +872,20 @@ public static class MidiPracticeSession
         return _activeLoopId is { } id
             ? _navigation.Loops.FirstOrDefault(loop => loop.Id == id)
             : null;
+    }
+
+    private static void SetActiveLoopId(Guid? id)
+    {
+        if (_activeLoopId == id)
+            return;
+        _activeLoopId = id;
+        _accessibilityStateVersion++;
+    }
+
+    private static void NavigationChanged()
+    {
+        _navigationVersion++;
+        _accessibilityStateVersion++;
     }
 
     private static bool TryGetNavigationIdentity(
