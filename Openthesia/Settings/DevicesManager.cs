@@ -1,5 +1,6 @@
 ﻿using Melanchall.DryWetMidi.Multimedia;
 using Openthesia.Core;
+using Openthesia.Core.Practice;
 
 namespace Openthesia.Settings;
 
@@ -60,6 +61,7 @@ public static class DevicesManager
         ODevice = OutputDevice.GetByIndex(deviceIndex);
         ODevice.EventSent += IOHandle.OnEventSent;
         ODevice.PrepareForEventsSending();
+        MidiPracticeSession.RefreshLightedKeyboardGuidance();
     }
 
     public static void SetOutputDevice(string deviceName)
@@ -83,11 +85,13 @@ public static class DevicesManager
         {
             ODevice.EventSent += IOHandle.OnEventSent;
             ODevice.PrepareForEventsSending();
+            MidiPracticeSession.RefreshLightedKeyboardGuidance();
         }
     }
 
     public static void ReleaseOutputDevice()
     {
+        MidiPracticeSession.ClearLightedKeyboardGuidance();
         ODevice?.Dispose();
         ODevice = null;
     }

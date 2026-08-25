@@ -6,6 +6,7 @@ using System.Numerics;
 using ImGuiNET;
 using Openthesia.Core;
 using Openthesia.Core.Plugins;
+using Openthesia.Core.Practice;
 using Openthesia.Settings;
 
 namespace Openthesia;
@@ -102,6 +103,7 @@ class Program
             _gd.SwapBuffers(_gd.MainSwapchain);
         }
 
+        MidiPracticeSession.ClearLightedKeyboardGuidance();
         ProgramData.SaveSettings();
 
         _gd.WaitForIdle();

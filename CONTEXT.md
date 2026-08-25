@@ -91,6 +91,10 @@ _Avoid_: Song Metadata, Device Settings
 **Device Settings**:
 Hardware and installation-specific configuration that does not belong to a Song, Chart, or Learner.
 
+**Lighted Keyboard Guidance**:
+An optional Device Setting that presents the next Required Hands Practice Target on compatible illuminated keys during Wait for Notes or Play in Time. It is unavailable in Recital and does not define vendor-specific lighting behavior.
+_Avoid_: Keyboard lesson mode, light show
+
 **Song Library**:
 A learner's locally managed collection of Songs, including their descriptive metadata, organization, and Practice Progress.
 _Avoid_: Folder browser, song store

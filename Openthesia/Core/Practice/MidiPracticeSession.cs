@@ -35,6 +35,8 @@ public static class MidiPracticeSession
     private const int ClickChannel = 9;
     private const int ClickNote = 77;
     private const int AccentClickNote = 76;
+    private static readonly LightedKeyboardGuidance _lightedKeyboardGuidance = new(
+        new MidiLightedKeyboardOutput());
 
     private readonly record struct AccessibilityCacheKey(
         PracticeChart Chart,
@@ -662,6 +664,18 @@ public static class MidiPracticeSession
             DeactivateCore(abandon: true);
     }
 
+    internal static void RefreshLightedKeyboardGuidance()
+    {
+        lock (Sync)
+            SynchronizeLightedKeyboardGuidance();
+    }
+
+    internal static void ClearLightedKeyboardGuidance()
+    {
+        lock (Sync)
+            _lightedKeyboardGuidance.Clear();
+    }
+
     private static string? StartCore(
         PracticeChart chart,
         PracticeSessionPlan plan,
@@ -724,6 +738,7 @@ public static class MidiPracticeSession
         _accessibilityCacheKey = null;
         _accessibilityDescription = null;
         _accessibilityStateVersion++;
+        _lightedKeyboardGuidance.Clear();
         StopClick();
         PracticePlaybackFilter.Disable();
     }
@@ -803,6 +818,22 @@ public static class MidiPracticeSession
                 preserveLatestResult: true,
                 countInBeatsOverride: countInBeats);
         }
+
+        SynchronizeLightedKeyboardGuidance();
+    }
+
+    private static void SynchronizeLightedKeyboardGuidance()
+    {
+        var state = _session?.Snapshot.State;
+        var target = state is null or
+            PracticeSessionState.Completed or
+            PracticeSessionState.Abandoned
+            ? null
+            : _session!.AccessibilityTarget;
+        _lightedKeyboardGuidance.Update(
+            CoreSettings.LightedKeyboard,
+            _plan?.Mode ?? PracticeMode.Recital,
+            target);
     }
 
     private static void StartAssistedAttemptAt(ChartTime position, bool disableLoop)

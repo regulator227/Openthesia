@@ -104,6 +104,10 @@ public static class ProgramData
                     DevicesManager.SetInputDevice(storedSettings.InputDevice);
                 }
 
+                CoreSettings.SetLightedKeyboardSettings(
+                    storedSettings.LightedKeyboardGuidance,
+                    storedSettings.LightedKeyboardMidiChannel);
+
                 if (!string.IsNullOrEmpty(storedSettings.OutputDevice))
                 {
                     DevicesManager.SetOutputDevice(storedSettings.OutputDevice);
@@ -180,6 +184,8 @@ public static class ProgramData
         {
             InputDevice = DevicesManager.IDevice?.Name,
             OutputDevice = DevicesManager.ODevice?.Name,
+            LightedKeyboardGuidance = CoreSettings.LightedKeyboard.Enabled,
+            LightedKeyboardMidiChannel = CoreSettings.LightedKeyboard.MidiChannel,
             MidiPaths = MidiPathsManager.MidiPaths,
             SoundFontsPaths = SoundFontsPathsManager.SoundFontsPaths,
             InstrumentPath = PluginsPathManager.InstrumentPath,

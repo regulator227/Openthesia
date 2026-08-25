@@ -14,6 +14,7 @@ using Openthesia.Ui.Helpers;
 using Openthesia.Core;
 using Openthesia.Core.FileDialogs;
 using Openthesia.Core.Midi;
+using Openthesia.Core.Practice;
 using Openthesia.Core.SoundFonts;
 using Openthesia.Enums;
 using Openthesia.Settings;
@@ -126,6 +127,33 @@ public class SettingsWindow : ImGuiWindow
 
         if (OutputDevice.GetDevicesCount() <= 0)
             ImGui.EndDisabled();
+
+        ImGui.Dummy(new(10));
+
+        var lightedKeyboard = CoreSettings.LightedKeyboard;
+        var lightedKeyboardEnabled = lightedKeyboard.Enabled;
+        if (ImGui.Checkbox("Light upcoming Practice notes", ref lightedKeyboardEnabled))
+        {
+            CoreSettings.SetLightedKeyboardSettings(
+                lightedKeyboardEnabled,
+                lightedKeyboard.MidiChannel);
+            MidiPracticeSession.RefreshLightedKeyboardGuidance();
+        }
+
+        var lightedKeyboardChannel = CoreSettings.LightedKeyboard.MidiChannel;
+        ImGui.SetNextItemWidth(ImGuiUtils.FixedSize(new Vector2(180)).X);
+        if (ImGui.SliderInt("Light channel", ref lightedKeyboardChannel, 1, 16))
+        {
+            CoreSettings.SetLightedKeyboardSettings(
+                CoreSettings.LightedKeyboard.Enabled,
+                lightedKeyboardChannel);
+            MidiPracticeSession.RefreshLightedKeyboardGuidance();
+        }
+        ImGui.TextWrapped(
+            "Uses standard low-velocity MIDI notes for the next Required Hands target in Wait for Notes and Play in Time. " +
+            "Match this channel to the keyboard's light or navigate channel. The keyboard may sound guide notes unless its guide sound is disabled.");
+        if (CoreSettings.LightedKeyboard.Enabled && ODevice is null)
+            ImGui.TextWrapped("Select a MIDI output device before using light guidance.");
 
         ImGuiTheme.PopButton();
 

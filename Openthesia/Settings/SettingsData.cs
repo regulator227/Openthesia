@@ -7,6 +7,8 @@ public class SettingsData
 {
     public string InputDevice;
     public string OutputDevice;
+    public bool LightedKeyboardGuidance;
+    public int LightedKeyboardMidiChannel = 1;
 
     public List<string> MidiPaths = new();
     public List<string> SoundFontsPaths = new();

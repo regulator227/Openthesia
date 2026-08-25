@@ -41,6 +41,9 @@ public static class CoreSettings
     private static int _sampleRate = 44100;
     public static int SampleRate => _sampleRate;
 
+    private static LightedKeyboardSettings _lightedKeyboard = LightedKeyboardSettings.Default;
+    internal static LightedKeyboardSettings LightedKeyboard => _lightedKeyboard;
+
     #region Video Recording
 
     private static string _videoRecDestFolder = KnownFolders.Videos.Path;
@@ -141,5 +144,10 @@ public static class CoreSettings
     public static void SetOpenPluginAtStartup(bool onoff)
     {
         _openPluginAtStart = onoff;
+    }
+
+    internal static void SetLightedKeyboardSettings(bool enabled, int midiChannel)
+    {
+        _lightedKeyboard = LightedKeyboardSettings.FromDeviceSettings(enabled, midiChannel);
     }
 }
