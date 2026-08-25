@@ -676,6 +676,20 @@ public static class MidiPracticeSession
             _lightedKeyboardGuidance.Clear();
     }
 
+    internal static void ReconfigureLightedKeyboardOutput(
+        Action reconfigureOutput,
+        bool refreshAfterChange)
+    {
+        ArgumentNullException.ThrowIfNull(reconfigureOutput);
+        lock (Sync)
+        {
+            _lightedKeyboardGuidance.Clear();
+            reconfigureOutput();
+            if (refreshAfterChange)
+                SynchronizeLightedKeyboardGuidance();
+        }
+    }
+
     private static string? StartCore(
         PracticeChart chart,
         PracticeSessionPlan plan,

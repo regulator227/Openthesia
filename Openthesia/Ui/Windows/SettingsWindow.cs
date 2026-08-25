@@ -132,7 +132,7 @@ public class SettingsWindow : ImGuiWindow
 
         var lightedKeyboard = CoreSettings.LightedKeyboard;
         var lightedKeyboardEnabled = lightedKeyboard.Enabled;
-        if (ImGui.Checkbox("Light upcoming Practice notes", ref lightedKeyboardEnabled))
+        if (ImGui.Checkbox("Lighted Keyboard Guidance", ref lightedKeyboardEnabled))
         {
             CoreSettings.SetLightedKeyboardSettings(
                 lightedKeyboardEnabled,
@@ -150,10 +150,10 @@ public class SettingsWindow : ImGuiWindow
             MidiPracticeSession.RefreshLightedKeyboardGuidance();
         }
         ImGui.TextWrapped(
-            "Uses standard low-velocity MIDI notes for the next Required Hands target in Wait for Notes and Play in Time. " +
+            "Uses standard low-velocity MIDI notes for the next Required Hands Practice Target in Wait for Notes and Play in Time. " +
             "Match this channel to the keyboard's light or navigate channel. The keyboard may sound guide notes unless its guide sound is disabled.");
         if (CoreSettings.LightedKeyboard.Enabled && ODevice is null)
-            ImGui.TextWrapped("Select a MIDI output device before using light guidance.");
+            ImGui.TextWrapped("Select a MIDI output device before using Lighted Keyboard Guidance.");
 
         ImGuiTheme.PopButton();
 

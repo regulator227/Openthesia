@@ -56,17 +56,26 @@ internal sealed class LightedKeyboardGuidance
         }
 
         Clear();
+        try
+        {
+            foreach (var pitch in targetPitches)
+            {
+                _output.Send(new LightedKeyboardMessage(
+                    LightedKeyboardMessageKind.NoteOn,
+                    settings.MidiChannel,
+                    pitch,
+                    GuidanceVelocity));
+            }
+        }
+        catch (Exception)
+        {
+            TurnOff(settings.MidiChannel, targetPitches);
+            return;
+        }
+
         _litMidiChannel = settings.MidiChannel;
         _litTargetOnset = target.Onset;
         _litPitches = targetPitches;
-        foreach (var pitch in _litPitches)
-        {
-            _output.Send(new LightedKeyboardMessage(
-                LightedKeyboardMessageKind.NoteOn,
-                settings.MidiChannel,
-                pitch,
-                GuidanceVelocity));
-        }
     }
 
     internal void Clear()
@@ -79,7 +88,12 @@ internal sealed class LightedKeyboardGuidance
         _litTargetOnset = null;
         _litPitches = Array.Empty<byte>();
 
-        foreach (var pitch in litPitches)
+        TurnOff(midiChannel, litPitches);
+    }
+
+    private void TurnOff(int midiChannel, IReadOnlyList<byte> pitches)
+    {
+        foreach (var pitch in pitches)
         {
             try
             {

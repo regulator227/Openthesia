@@ -53,18 +53,11 @@ public static class DevicesManager
 
     public static void SetOutputDevice(int deviceIndex)
     {
-        ReleaseOutputDevice();
-
-        ODevice = OutputDevice.GetByIndex(deviceIndex);
-        ODevice.EventSent += IOHandle.OnEventSent;
-        ODevice.PrepareForEventsSending();
-        MidiPracticeSession.RefreshLightedKeyboardGuidance();
+        ReplaceOutputDevice(OutputDevice.GetByIndex(deviceIndex));
     }
 
     public static void SetOutputDevice(string deviceName)
     {
-        ReleaseOutputDevice();
-
         List<string> deviceNames = new();
         foreach (var oDevice in OutputDevice.GetAll())
         {
@@ -72,28 +65,42 @@ public static class DevicesManager
         }
 
         if (!deviceNames.Contains(deviceName))
-            return;
-
-        ODevice = OutputDevice.GetByName(deviceName);
-        if (ODevice != null)
         {
-            ODevice.EventSent += IOHandle.OnEventSent;
-            ODevice.PrepareForEventsSending();
-            MidiPracticeSession.RefreshLightedKeyboardGuidance();
+            ReplaceOutputDevice(null);
+            return;
         }
+
+        ReplaceOutputDevice(OutputDevice.GetByName(deviceName));
     }
 
     public static void ReleaseOutputDevice()
     {
-        try
-        {
-            MidiPracticeSession.ClearLightedKeyboardGuidance();
-        }
-        finally
-        {
-            var outputDevice = ODevice;
-            ODevice = null;
-            outputDevice?.Dispose();
-        }
+        ReplaceOutputDevice(null);
+    }
+
+    private static void ReplaceOutputDevice(OutputDevice? nextOutputDevice)
+    {
+        MidiPracticeSession.ReconfigureLightedKeyboardOutput(
+            () =>
+            {
+                var previousOutputDevice = ODevice;
+                ODevice = null;
+                try
+                {
+                    previousOutputDevice?.Dispose();
+                    if (nextOutputDevice is null)
+                        return;
+
+                    nextOutputDevice.EventSent += IOHandle.OnEventSent;
+                    nextOutputDevice.PrepareForEventsSending();
+                    ODevice = nextOutputDevice;
+                }
+                catch
+                {
+                    nextOutputDevice?.Dispose();
+                    throw;
+                }
+            },
+            refreshAfterChange: nextOutputDevice is not null);
     }
 }

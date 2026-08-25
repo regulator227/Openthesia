@@ -7,7 +7,7 @@ namespace Openthesia.Tests.Core.Practice;
 public sealed class LightedKeyboardGuidanceTests
 {
     [Fact]
-    public void WaitForNotesShowsTheNextTargetOnTheConfiguredMidiChannel()
+    public void WaitForNotesShowsTheNextPracticeTargetOnTheConfiguredMidiChannel()
     {
         var output = new RecordingLightedKeyboardOutput();
         var guidance = new LightedKeyboardGuidance(output);
@@ -26,7 +26,7 @@ public sealed class LightedKeyboardGuidanceTests
     }
 
     [Fact]
-    public void ChangingTargetClearsOldLightsBeforeShowingTheNewTarget()
+    public void ChangingPracticeTargetClearsOldLightsBeforeShowingTheNewPracticeTarget()
     {
         var output = new RecordingLightedKeyboardOutput();
         var guidance = new LightedKeyboardGuidance(output);
@@ -56,7 +56,7 @@ public sealed class LightedKeyboardGuidanceTests
     }
 
     [Fact]
-    public void RepeatingTheSameTargetDoesNotResendLightMessages()
+    public void RepeatingTheSamePracticeTargetDoesNotResendLightMessages()
     {
         var output = new RecordingLightedKeyboardOutput();
         var guidance = new LightedKeyboardGuidance(output);
@@ -122,7 +122,7 @@ public sealed class LightedKeyboardGuidanceTests
     }
 
     [Fact]
-    public void ResetBeforeAttachingOutputAllowsTheCurrentTargetToBeSent()
+    public void ResetBeforeAttachingOutputAllowsTheCurrentPracticeTargetToBeSent()
     {
         var output = new AttachableLightedKeyboardOutput();
         var guidance = new LightedKeyboardGuidance(output);
@@ -140,7 +140,7 @@ public sealed class LightedKeyboardGuidanceTests
     }
 
     [Fact]
-    public void ClearContinuesAfterAnOutputFailureAndResetsTheTarget()
+    public void ClearContinuesAfterAnOutputFailureAndResetsThePracticeTarget()
     {
         var output = new RecordingLightedKeyboardOutput();
         var guidance = new LightedKeyboardGuidance(output);
@@ -164,7 +164,30 @@ public sealed class LightedKeyboardGuidanceTests
     }
 
     [Fact]
-    public void PlayInTimeShowsTheNextTarget()
+    public void FailedNoteOnClearsPartialLightsAndRetriesThePracticeTarget()
+    {
+        var output = new FailSecondSendLightedKeyboardOutput();
+        var guidance = new LightedKeyboardGuidance(output);
+        var settings = new LightedKeyboardSettings(Enabled: true, MidiChannel: 4);
+        var target = new PracticeTarget(ChartTime.Zero, new byte[] { 60, 64 });
+
+        guidance.Update(settings, PracticeMode.WaitForNotes, target);
+        guidance.Update(settings, PracticeMode.WaitForNotes, target);
+
+        Assert.Equal(
+            new[]
+            {
+                new LightedKeyboardMessage(LightedKeyboardMessageKind.NoteOn, 4, 60, 1),
+                new LightedKeyboardMessage(LightedKeyboardMessageKind.NoteOff, 4, 60, 0),
+                new LightedKeyboardMessage(LightedKeyboardMessageKind.NoteOff, 4, 64, 0),
+                new LightedKeyboardMessage(LightedKeyboardMessageKind.NoteOn, 4, 60, 1),
+                new LightedKeyboardMessage(LightedKeyboardMessageKind.NoteOn, 4, 64, 1)
+            },
+            output.Messages);
+    }
+
+    [Fact]
+    public void PlayInTimeShowsTheNextPracticeTarget()
     {
         var output = new RecordingLightedKeyboardOutput();
         var guidance = new LightedKeyboardGuidance(output);
@@ -180,7 +203,7 @@ public sealed class LightedKeyboardGuidanceTests
     }
 
     [Fact]
-    public void RecitalClearsCurrentLightsWithoutShowingAnotherTarget()
+    public void RecitalClearsCurrentLightsWithoutShowingAnotherPracticeTarget()
     {
         var output = new RecordingLightedKeyboardOutput();
         var guidance = new LightedKeyboardGuidance(output);
@@ -238,6 +261,22 @@ public sealed class LightedKeyboardGuidanceTests
         {
             if (Attached)
                 Messages.Add(message);
+        }
+    }
+
+    private sealed class FailSecondSendLightedKeyboardOutput : ILightedKeyboardOutput
+    {
+        private int _sendCount;
+
+        public List<LightedKeyboardMessage> Messages { get; } = new();
+
+        public void Send(LightedKeyboardMessage message)
+        {
+            _sendCount++;
+            if (_sendCount == 2)
+                throw new InvalidOperationException("The output device disconnected.");
+
+            Messages.Add(message);
         }
     }
 }
