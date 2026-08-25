@@ -4,7 +4,6 @@ using System.Diagnostics;
 using Veldrid.StartupUtilities;
 using System.Numerics;
 using ImGuiNET;
-using Vanara.PInvoke;
 using Openthesia.Core;
 using Openthesia.Core.Plugins;
 using Openthesia.Settings;
@@ -23,7 +22,7 @@ class Program
     [STAThread]
     static void Main(string[] args)
     {
-        User32.SetProcessDPIAware();
+        WindowsAccessibilityAdapter.EnablePerMonitorV2();
 
         VeldridStartup.CreateWindowAndGraphicsDevice(
             new WindowCreateInfo(50, 50, 1280, 720, WindowState.Maximized, $"Openthesia {ProgramData.ProgramVersion}"),
@@ -36,16 +35,9 @@ class Program
 
         _window.Resized += () =>
         {
-            int minWidth = (int)(1280 * FontController.DSF);
-            int minHeigth = (int)(720 * FontController.DSF);
-
-            if (_window.Width < minWidth)
-                _window.Width = minWidth;
-
-            if (_window.Height < minHeigth)
-                _window.Height = minHeigth;
-
-            _gd.MainSwapchain.Resize((uint)_window.Width, (uint)_window.Height);
+            _gd.MainSwapchain.Resize(
+                (uint)Math.Max(1, _window.Width),
+                (uint)Math.Max(1, _window.Height));
             _controller.WindowResized(_window.Width, _window.Height);
         };
 
@@ -54,6 +46,9 @@ class Program
 
         ImGuiController.LoadImages(_gd, _controller);
         ProgramData.Initialize();
+        AccessibilityRuntime.Update(_window.Handle);
+        _controller.SetAccessibilityScale(AccessibilityRuntime.Presentation.UiScale);
+        ImGuiTheme.PushTheme();
 
         Application app = new();
 
@@ -63,7 +58,11 @@ class Program
             stopwatch.Restart();
             InputSnapshot snapshot = _window.PumpEvents();
             if (!_window.Exists) { break; }
+            var accessibilityChanged = AccessibilityRuntime.Update(_window.Handle);
+            _controller.SetAccessibilityScale(AccessibilityRuntime.Presentation.UiScale);
             _controller.Update(deltaTime, snapshot);
+            if (accessibilityChanged)
+                ImGuiTheme.PushTheme();
 
             if (ImGui.IsKeyPressed(ImGuiKey.F11, false))
             {

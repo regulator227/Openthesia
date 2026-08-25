@@ -23,6 +23,7 @@ public static class ProgramData
         Directory.CreateDirectory(DataPath);
         Directory.CreateDirectory(HandsDataPath);
         LoadSettings();
+        AccessibilityRuntime.Initialize(DataPath);
         try
         {
             ActiveLearner = new LearnerRegistry(DataPath).GetOrCreateActive();
@@ -221,5 +222,7 @@ public static class ProgramData
         {
             User32.MessageBox(IntPtr.Zero, $"{ex.Message}", "Error saving program settings", User32.MB_FLAGS.MB_OK | User32.MB_FLAGS.MB_ICONERROR | User32.MB_FLAGS.MB_TOPMOST);
         }
+
+        AccessibilityRuntime.Save();
     }
 }

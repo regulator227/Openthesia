@@ -8,6 +8,7 @@ using Veldrid;
 using Vanara.PInvoke;
 using System.ComponentModel;
 using Veldrid.ImageSharp;
+using Openthesia.Settings;
 using Openthesia.Ui.Helpers;
 
 namespace Openthesia.Core;
@@ -40,6 +41,8 @@ public class ImGuiController : IDisposable
     private int _windowWidth;
     private int _windowHeight;
     private Vector2 _scaleFactor = Vector2.One;
+    private float _fontScale = 1f;
+    private float _requestedFontScale = 1f;
 
     // Image trackers
     private readonly Dictionary<TextureView, ResourceSetInfo> _setsByView
@@ -63,9 +66,14 @@ public class ImGuiController : IDisposable
         var io = ImGui.GetIO();
         io.BackendFlags |= ImGuiBackendFlags.HasMouseCursors;
         io.BackendFlags |= ImGuiBackendFlags.RendererHasVtxOffset;
+        io.ConfigFlags |= ImGuiConfigFlags.NavEnableKeyboard;
         io.Fonts.Flags |= ImFontAtlasFlags.NoBakedLines;
 
-        LoadFonts();
+        var initialScale = AccessibilityPolicy.Resolve(
+            AccessibilitySettings.Default,
+            WindowsAccessibilityAdapter.Capture(Program._window.Handle).State).UiScale;
+        ImGui.GetStyle().ScaleAllSizes(initialScale);
+        LoadFonts(initialScale);
 
         CreateDeviceResources(gd, outputDescription);
         SetPerFrameImGuiData(1f / 60f);
@@ -73,31 +81,35 @@ public class ImGuiController : IDisposable
         _frameBegun = true;
     }
 
-    public unsafe void LoadFonts()
+    public unsafe void LoadFonts(float scale)
     {
+        scale = Math.Clamp(scale, 1f, 9f);
+        _fontScale = scale;
+        _requestedFontScale = scale;
+        FontController.DSF = scale;
+        FontController.FontSizes.Clear();
+        ImGui.GetIO().Fonts.Clear();
+
         // load custom font
         TryGetEmbeddedResourceBytes("Inter", out var fontData);
         GCHandle pinnedArray = GCHandle.Alloc(fontData, GCHandleType.Pinned);
         IntPtr pointer = pinnedArray.AddrOfPinnedObject();
 
-        // DPI scaling > 200% causes font sizes that are too big for the device texture
-        float dpiScaleFactor = Math.Min(2.0f, User32.GetDpiForWindow(Program._window.Handle) / 96.0f);
-        FontController.DSF = dpiScaleFactor;
+        FontController.Font16_Icon12 = ImGui.GetIO().Fonts.AddFontFromMemoryTTF(pointer, fontData.Length, 16 * scale);
+        LoadIcons(12 * scale);
 
-        FontController.Font16_Icon12 = ImGui.GetIO().Fonts.AddFontFromMemoryTTF(pointer, fontData.Length, 16 * dpiScaleFactor);
-        LoadIcons(12);
+        FontController.Font16_Icon16 = ImGui.GetIO().Fonts.AddFontFromMemoryTTF(pointer, fontData.Length, 16 * scale);
+        LoadIcons(16 * scale);
 
-        FontController.Font16_Icon16 = ImGui.GetIO().Fonts.AddFontFromMemoryTTF(pointer, fontData.Length, 16 * dpiScaleFactor);
-        LoadIcons(16);
-
-        FontController.Title = ImGui.GetIO().Fonts.AddFontFromMemoryTTF(pointer, fontData.Length, 80 * dpiScaleFactor);
-        FontController.BigIcon = ImGui.GetIO().Fonts.AddFontFromMemoryTTF(pointer, fontData.Length, 120 * dpiScaleFactor);
-        LoadIcons(120);
+        var decorativeScale = Math.Min(scale, 3f);
+        FontController.Title = ImGui.GetIO().Fonts.AddFontFromMemoryTTF(pointer, fontData.Length, 80 * decorativeScale);
+        FontController.BigIcon = ImGui.GetIO().Fonts.AddFontFromMemoryTTF(pointer, fontData.Length, 120 * decorativeScale);
+        LoadIcons(120 * decorativeScale);
 
         for (int i = 17; i <= 25; i++)
         {
-            FontController.FontSizes.Add(ImGui.GetIO().Fonts.AddFontFromMemoryTTF(pointer, fontData.Length, i * dpiScaleFactor));
-            LoadIcons(i);
+            FontController.FontSizes.Add(ImGui.GetIO().Fonts.AddFontFromMemoryTTF(pointer, fontData.Length, i * scale));
+            LoadIcons(i * scale);
         }
 
         pinnedArray.Free();
@@ -447,11 +459,38 @@ public class ImGuiController : IDisposable
             ImGui.Render();
         }
 
+        ApplyRequestedFontScale();
+
         SetPerFrameImGuiData(deltaSeconds);
         UpdateImGuiInput(snapshot);
 
         _frameBegun = true;
         ImGui.NewFrame();
+    }
+
+    public void SetAccessibilityScale(float scale)
+    {
+        _requestedFontScale = Math.Clamp(scale, 1f, 9f);
+    }
+
+    private void ApplyRequestedFontScale()
+    {
+        if (Math.Abs(_requestedFontScale - _fontScale) < 0.01f)
+            return;
+
+        var oldScale = _fontScale;
+        var newScale = _requestedFontScale;
+        ImGui.GetStyle().ScaleAllSizes(newScale / oldScale);
+
+        _gd.DisposeWhenIdle(_fontTextureResourceSet);
+        _gd.DisposeWhenIdle(_fontTextureView);
+        _gd.DisposeWhenIdle(_fontTexture);
+
+        LoadFonts(newScale);
+        RecreateFontDeviceTexture(_gd);
+        _fontTextureResourceSet = _gd.ResourceFactory.CreateResourceSet(
+            new ResourceSetDescription(_textureLayout, _fontTextureView));
+        ImGuiTheme.PushTheme();
     }
 
     /// <summary>

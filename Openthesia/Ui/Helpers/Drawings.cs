@@ -34,7 +34,7 @@ public class Drawings
 
             float y = (startY + (float)(time * speed)) % (screenHeight + length);
 
-            if (CoreSettings.NeonFx)
+            if (CoreSettings.NeonFx && AccessibilityRuntime.Presentation.AllowGlow)
             {
                 for (int j = 0; j < 3; j++)
                 {

@@ -21,37 +21,52 @@ public class MidiBrowserWindow : ImGuiWindow
 
     private void RenderSearchBar()
     {
-        if (ImGui.BeginChild("Searchbar container", new(_io.DisplaySize.X / 1.2f, 50)))
+        var searchHeight = ImGui.GetFrameHeightWithSpacing() + ImGuiUtils.FixedSize(new Vector2(12)).Y;
+        if (ImGui.BeginChild("Searchbar container", new(ImGui.GetContentRegionAvail().X, searchHeight)))
         {
             string orderIcon = _alphabeticOrder ? FontAwesome6.ArrowDownAZ : FontAwesome6.ArrowUpAZ;
-            if (ImGui.Button(orderIcon))
+            var orderLabel = _alphabeticOrder ? "Sort A to Z" : "Sort Z to A";
+            if (ImGui.Button($"{orderIcon} {orderLabel}"))
             {
                 _alphabeticOrder = !_alphabeticOrder;
             }
             ImGui.SameLine();
+            ImGui.SetNextItemWidth(Math.Max(100f, ImGui.GetContentRegionAvail().X));
             ImGui.InputTextWithHint($"Search {FontAwesome6.MagnifyingGlass}", "Search midi file...", ref _searchBuffer, 1000);
-            ImGui.EndChild();
         }
+        ImGui.EndChild();
     }
 
     private void RenderBrowser()
     {
-        Drawings.RenderMatrixBackground();
+        if (CoreSettings.AnimatedBackground && AccessibilityRuntime.Presentation.AllowDecorativeMotion)
+            Drawings.RenderMatrixBackground();
 
         // browser theme
-        ImGui.PushStyleColor(ImGuiCol.ChildBg, ThemeManager.MainBgCol * 0.8f);
+        ImGui.PushStyleColor(
+            ImGuiCol.ChildBg,
+            AccessibilityRuntime.Presentation.UseSystemContrast
+                ? AccessibilityRuntime.ContrastPalette.Window
+                : new Vector4(ThemeManager.MainBgCol.X, ThemeManager.MainBgCol.Y, ThemeManager.MainBgCol.Z, 1f));
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, ImGuiUtils.FixedSize(new Vector2(10)));
 
         using (AutoFont font22 = new(FontController.GetFontOfSize(22)))
         {
-            ImGui.PushStyleVar(ImGuiStyleVar.ChildBorderSize, 2f);
-            ImGui.PushStyleVar(ImGuiStyleVar.ChildRounding, 10f);
-            ImGui.SetNextWindowPos(new Vector2((_io.DisplaySize.X - _io.DisplaySize.X / 1.2f) / 2, ImGuiUtils.FixedSize(new Vector2(120)).Y));
-            Vector2 containerSize = _io.DisplaySize / 1.2f;
-            if (ImGui.BeginChild("Midi browser container", containerSize, ImGuiChildFlags.AlwaysUseWindowPadding | ImGuiChildFlags.Border))
+            var margin = Math.Max(8f, Math.Min(ImGuiUtils.FixedSize(new Vector2(24)).X, _io.DisplaySize.X * 0.04f));
+            var top = Math.Min(ImGuiUtils.FixedSize(new Vector2(115)).Y, _io.DisplaySize.Y * 0.22f);
+            var containerSize = new Vector2(
+                Math.Max(200f, _io.DisplaySize.X - margin * 2),
+                Math.Max(200f, _io.DisplaySize.Y - top - margin));
+            ImGui.PushStyleVar(ImGuiStyleVar.ChildBorderSize, Math.Max(2f, 2f * FontController.DSF));
+            ImGui.PushStyleVar(ImGuiStyleVar.ChildRounding, 10f * FontController.DSF);
+            ImGui.SetCursorScreenPos(new Vector2(margin, top));
+            var visible = ImGui.BeginChild(
+                "Midi browser container",
+                containerSize,
+                ImGuiChildFlags.AlwaysUseWindowPadding | ImGuiChildFlags.Border);
+            ImGui.PopStyleVar(2);
+            if (visible)
             {
-                ImGui.PopStyleVar(2);
-
                 ImGui.Text($"{FontAwesome6.Folder} MIDI File Browser");
                 ImGui.Spacing();
                 RenderSearchBar();
@@ -92,8 +107,8 @@ public class MidiBrowserWindow : ImGuiWindow
                     }
                     ImGui.EndChild();
                 }
-                ImGui.EndChild();
             }
+            ImGui.EndChild();
 
             ImGui.PopStyleColor(); // child bg
             ImGui.PopStyleVar(); // window padding
@@ -109,15 +124,20 @@ public class MidiBrowserWindow : ImGuiWindow
     {
         using (AutoFont font16_icon16 = new(FontController.Font16_Icon16))
         {
-            // back button
-            ImGui.SetCursorScreenPos(ImGuiUtils.FixedSize(new Vector2(22, 50)));
-            if (ImGui.Button(FontAwesome6.ArrowLeftLong, ImGuiUtils.FixedSize(new Vector2(100, 50))))
+            var margin = Math.Max(8f, Math.Min(ImGuiUtils.FixedSize(new Vector2(22)).X, _io.DisplaySize.X * 0.04f));
+            var gap = ImGuiUtils.FixedSize(new Vector2(10)).X;
+            var buttonWidth = Math.Min(
+                ImGuiUtils.FixedSize(new Vector2(150)).X,
+                Math.Max(100f, (_io.DisplaySize.X - margin * 2 - gap) / 2));
+            var buttonHeight = ImGuiUtils.FixedSize(new Vector2(50)).Y;
+            ImGui.SetCursorScreenPos(new Vector2(margin, Math.Min(buttonHeight, _io.DisplaySize.Y * 0.08f)));
+            if (ImGui.Button($"{FontAwesome6.ArrowLeftLong} Back", new Vector2(buttonWidth, buttonHeight)) ||
+                EscapeReturns())
                 WindowsManager.SetWindow(Enums.Windows.Home);
 
-            // open file button
             ImGuiTheme.PushButton(ImGuiTheme.HtmlToVec4("#0EA5E9"), ImGuiTheme.HtmlToVec4("#096E9B"), ImGuiTheme.HtmlToVec4("#0EA5E9"));
-            ImGui.SetCursorScreenPos(ImGuiUtils.FixedSize(new Vector2(132f, 50)));
-            if (ImGui.Button($"Open file {FontAwesome6.FileImport}", ImGuiUtils.FixedSize(new Vector2(100, 50))))
+            ImGui.SameLine();
+            if (ImGui.Button($"Open file {FontAwesome6.FileImport}", new Vector2(buttonWidth, buttonHeight)))
             {
                 if (MidiFileHandler.OpenMidiDialog())
                 {
@@ -132,5 +152,12 @@ public class MidiBrowserWindow : ImGuiWindow
 
             RenderBrowser();
         }
+    }
+
+    private static bool EscapeReturns()
+    {
+        return !ImGui.GetIO().WantTextInput &&
+               !ImGui.IsPopupOpen(string.Empty, ImGuiPopupFlags.AnyPopupId) &&
+               ImGui.IsKeyPressed(ImGuiKey.Escape, false);
     }
 }

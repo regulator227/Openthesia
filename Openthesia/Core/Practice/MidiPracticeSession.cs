@@ -68,6 +68,26 @@ public static class MidiPracticeSession
         }
     }
 
+    public static PracticeAccessibilityDescription? AccessibilityDescription
+    {
+        get
+        {
+            lock (Sync)
+            {
+                return _chart is not null && _session is not null
+                    ? PracticeAccessibility.Describe(
+                        _chart,
+                        _session.Snapshot,
+                        DateTimeOffset.UtcNow <= _feedbackExpiresAtUtc
+                            ? _latestFeedback
+                            : Array.Empty<PracticeFeedback>(),
+                        _navigation,
+                        ActiveLoopCore())
+                    : null;
+            }
+        }
+    }
+
     public static PracticeNavigation Navigation
     {
         get

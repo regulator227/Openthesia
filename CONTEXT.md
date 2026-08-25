@@ -103,6 +103,10 @@ _Avoid_: High score, account statistics
 A live or recorded visual representation of a performance that does not require the performer to follow a guided practice sequence.
 _Avoid_: Practice mode, lesson mode
 
+**Accessibility Baseline**:
+The always-on guarantees that keep the learner-facing Practice journey operable and meaningful across scaling, keyboard input, focus, color perception, motion sensitivity, and alternative labels.
+_Avoid_: Accessibility mode, compliance certification
+
 **Practice Score**:
 A read-only staff-notation view of a selected Score Interpretation, synchronized with a Practice Session to support learning rather than notation authoring or publication.
 _Avoid_: Sheet-music editor, notation workspace, score editor
