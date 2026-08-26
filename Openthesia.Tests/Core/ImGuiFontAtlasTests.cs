@@ -3,6 +3,7 @@ using Xunit;
 
 namespace Openthesia.Tests.Core;
 
+[Collection("ImGui")]
 public sealed class ImGuiFontAtlasTests
 {
     [Fact]

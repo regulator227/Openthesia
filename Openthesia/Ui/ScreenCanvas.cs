@@ -1033,7 +1033,7 @@ public class ScreenCanvas
         {
             ImGui.SeparatorText("Practice Status");
             foreach (var line in lines)
-                ImGui.TextWrapped(line);
+                ImGuiUtils.TextWrappedUnformatted(line);
             var statusValue = string.Join(" | ", lines);
             ImGuiAccessibility.Text(
                 "practice.status",
@@ -1097,7 +1097,7 @@ public class ScreenCanvas
         if (warning is not null)
         {
             ImGui.Separator();
-            ImGui.TextWrapped(warning);
+            ImGuiUtils.TextWrappedUnformatted(warning);
             ImGuiAccessibility.Text(
                 "practice.tools.status",
                 "Practice tools status",
@@ -1183,7 +1183,7 @@ public class ScreenCanvas
             "Choose whether Chart notes outside the Required Hands play automatically.",
             accompanimentEnabled);
         ImGui.EndDisabled();
-        ImGui.TextWrapped("Changing setup or range starts a fresh comparable Practice Session.");
+        ImGuiUtils.TextWrappedUnformatted("Changing setup or range starts a fresh comparable Practice Session.");
     }
 
     private static void DrawPracticeTimingControls()
@@ -1238,7 +1238,7 @@ public class ScreenCanvas
                 {
                     CountInOnLoopRepeat = !(MidiPracticeSession.Preferences ?? preferences).CountInOnLoopRepeat
                 }));
-        ImGui.TextWrapped(
+        ImGuiUtils.TextWrappedUnformatted(
             "Count-in clicks always sound. The metronome setting controls only the clicks while the Chart is playing.");
         var canRestartAfterError = MidiPracticeSession.CanRestartAfterError;
         ImGui.BeginDisabled(!canRestartAfterError);
@@ -1402,8 +1402,8 @@ public class ScreenCanvas
         }
 
         if (!validRange && (_loopStart is not null || _loopEnd is not null))
-            ImGui.TextWrapped("A loop end must be after its start. The end uses the next Chart beat boundary.");
-        ImGui.TextWrapped("Enabling or editing a loop starts a new comparable Practice Session for that fixed range.");
+            ImGuiUtils.TextWrappedUnformatted("A loop end must be after its start. The end uses the next Chart beat boundary.");
+            ImGuiUtils.TextWrappedUnformatted("Enabling or editing a loop starts a new comparable Practice Session for that fixed range.");
     }
 
     private static void DrawPracticeBookmarkControls()
@@ -1571,7 +1571,7 @@ public class ScreenCanvas
                 invoked: deleteBookmarkInvoked);
         }
 
-        ImGui.TextWrapped("Going to a bookmark outside the enabled loop disables the loop and starts an assisted attempt there.");
+        ImGuiUtils.TextWrappedUnformatted("Going to a bookmark outside the enabled loop disables the loop and starts an assisted attempt there.");
     }
 
     private static void BeginNewLoopDraft()

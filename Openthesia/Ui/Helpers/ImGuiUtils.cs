@@ -18,6 +18,22 @@ public static class ImGuiUtils
             ImGui.Spacing();
         }
     }
+
+    public static void TextWrappedUnformatted(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+
+        ImGui.PushTextWrapPos();
+        try
+        {
+            ImGui.TextUnformatted(text);
+        }
+        finally
+        {
+            ImGui.PopTextWrapPos();
+        }
+    }
+
     /// <summary>
     /// Darkens a color by the specified factor.
     /// </summary>

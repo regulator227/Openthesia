@@ -58,7 +58,7 @@ public class ModeSelectionWindow : ImGuiWindow
                 Drawings.RenderMatrixBackground();
 
             RenderTitle(MidiFileData.FileName.Replace(".mid", string.Empty));
-            ImGui.TextWrapped("Choose how to use this Chart. Practice setup and progress remain available at every supported text and display scale.");
+            ImGuiUtils.TextWrappedUnformatted("Choose how to use this Chart. Practice setup and progress remain available at every supported text and display scale.");
             ImGui.SeparatorText("Practice setup");
             EnsurePracticePreferencesLoaded();
             RenderPracticeConfiguration();
@@ -66,7 +66,7 @@ public class ModeSelectionWindow : ImGuiWindow
 
             if (_practiceWarning is not null)
             {
-                ImGui.TextWrapped(_practiceWarning);
+                ImGuiUtils.TextWrappedUnformatted(_practiceWarning);
                 ImGuiAccessibility.Text(
                     "practice-setup.warning",
                     "Practice setup status",
@@ -128,7 +128,7 @@ public class ModeSelectionWindow : ImGuiWindow
     private static void RenderTitle(string text)
     {
         ImGui.PushFont(FontController.GetFontOfSize(22));
-        ImGui.TextWrapped(text);
+        ImGuiUtils.TextWrappedUnformatted(text);
         ImGuiAccessibility.Text(
             "practice-setup.chart",
             "Selected Chart",
@@ -143,7 +143,7 @@ public class ModeSelectionWindow : ImGuiWindow
         string color,
         Action onClick)
     {
-        ImGui.TextWrapped(description);
+        ImGuiUtils.TextWrappedUnformatted(description);
         ImGuiTheme.PushButton(
             ImGuiTheme.HtmlToVec4(color),
             ImGuiTheme.HtmlToVec4(color, 0.7f),
@@ -338,7 +338,7 @@ public class ModeSelectionWindow : ImGuiWindow
             $"Trend A/E/T · {progress.RecentTrend.Accuracy}/{progress.RecentTrend.Extras}/{progress.RecentTrend.Timing}");
         ImGui.SeparatorText("Recent progress");
         var summary = $"{latestLine}\n{string.Join(" · ", progressParts)}";
-        ImGui.TextWrapped(summary);
+        ImGuiUtils.TextWrappedUnformatted(summary);
         ImGuiAccessibility.Text(
             "practice-setup.recent-progress",
             "Recent Practice progress",
@@ -356,7 +356,7 @@ public class ModeSelectionWindow : ImGuiWindow
                       $"Accuracy {latest.Accuracy.RequiredNotesHitRatio:P1} · " +
                       $"{latest.Accuracy.ExtraNotes} Extra{assisted}";
         ImGui.SeparatorText("Recent progress");
-        ImGui.TextWrapped(summary);
+        ImGuiUtils.TextWrappedUnformatted(summary);
         ImGuiAccessibility.Text(
             "practice-setup.recent-progress",
             "Recent Practice progress",
