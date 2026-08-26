@@ -4,7 +4,7 @@ setlocal EnableExtensions
 set "REPO=%~dp0"
 if "%REPO:~-1%"=="\" set "REPO=%REPO:~0,-1%"
 set "PROJECT=%REPO%\Openthesia\Openthesia.csproj"
-set "EXE=%REPO%\Openthesia\bin\x64\Release\net6.0\Openthesia.exe"
+set "EXE=%REPO%\Openthesia\bin\x64\Release\net6.0-windows\Openthesia.exe"
 
 title Rebuild latest Openthesia
 
