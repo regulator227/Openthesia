@@ -234,11 +234,11 @@ public class SettingsWindow : ImGuiWindow
                 MidiPracticeSession.RefreshLightedKeyboardGuidance();
             },
             "Match the keyboard's light or navigate MIDI channel.");
-        ImGui.TextWrapped(
+        ImGuiUtils.TextWrappedUnformatted(
             "Uses standard low-velocity MIDI notes for the next Required Hands Practice Target in Wait for Notes and Play in Time. " +
             "Match this channel to the keyboard's light or navigate channel. The keyboard may sound guide notes unless its guide sound is disabled.");
         if (CoreSettings.LightedKeyboard.Enabled && ODevice is null)
-            ImGui.TextWrapped("Select a MIDI output device before using Lighted Keyboard Guidance.");
+            ImGuiUtils.TextWrappedUnformatted("Select a MIDI output device before using Lighted Keyboard Guidance.");
 
         ImGuiTheme.PopButton();
 
@@ -757,10 +757,10 @@ public class SettingsWindow : ImGuiWindow
                 preference)),
             AccessibilityRuntime.SetVisualEffects,
             "System follows Windows preferences. Reduce removes decorative motion, glow, and transparency.");
-        ImGui.TextWrapped("System follows Windows animation and contrast preferences. Reduce removes decorative motion, glow, and transparency.");
+        ImGuiUtils.TextWrappedUnformatted("System follows Windows animation and contrast preferences. Reduce removes decorative motion, glow, and transparency.");
         if (AccessibilityRuntime.Warning is not null)
         {
-            ImGui.TextWrapped(AccessibilityRuntime.Warning);
+            ImGuiUtils.TextWrappedUnformatted(AccessibilityRuntime.Warning);
             ImGuiAccessibility.Text(
                 "device-settings.accessibility-status",
                 "Accessibility settings status",
