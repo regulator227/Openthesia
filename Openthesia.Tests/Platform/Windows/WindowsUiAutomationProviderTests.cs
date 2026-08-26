@@ -1,6 +1,7 @@
 using Openthesia.Core.Accessibility;
 using Openthesia.Platform.Windows;
 using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
 using System.Windows.Automation;
 using System.Windows.Automation.Provider;
 using Xunit;
@@ -9,6 +10,65 @@ namespace Openthesia.Tests.Platform.Windows;
 
 public sealed class WindowsUiAutomationProviderTests
 {
+    [Fact]
+    public void AttachedProviderCanBeDisposedWithoutThrowing()
+    {
+        var tree = new AccessibilityTree();
+        tree.Update(Frame("Paused"), TimeSpan.Zero);
+        var windowHandle = CreateTestWindow();
+
+        WindowsUiAutomationProvider? provider = null;
+        try
+        {
+            provider = new WindowsUiAutomationProvider(windowHandle, tree);
+
+            provider.Dispose();
+        }
+        finally
+        {
+            provider?.Dispose();
+            DestroyWindow(windowHandle);
+        }
+    }
+
+    [Fact]
+    public void DestroyingAttachedWindowDoesNotThrow()
+    {
+        var tree = new AccessibilityTree();
+        tree.Update(Frame("Paused"), TimeSpan.Zero);
+        var windowHandle = CreateTestWindow();
+        var provider = new WindowsUiAutomationProvider(windowHandle, tree);
+
+        try
+        {
+            Assert.True(DestroyWindow(windowHandle));
+        }
+        finally
+        {
+            provider.Dispose();
+            DestroyWindow(windowHandle);
+        }
+    }
+
+    private static IntPtr CreateTestWindow()
+    {
+        var windowHandle = CreateWindowEx(
+            0,
+            "STATIC",
+            "Openthesia UI Automation test",
+            0,
+            0,
+            0,
+            1,
+            1,
+            IntPtr.Zero,
+            IntPtr.Zero,
+            IntPtr.Zero,
+            IntPtr.Zero);
+        Assert.NotEqual(IntPtr.Zero, windowHandle);
+        return windowHandle;
+    }
+
     [Fact]
     public void ButtonMapsToNamedInvokeProviderAndQueuesItsDomainAction()
     {
@@ -635,4 +695,23 @@ public sealed class WindowsUiAutomationProviderTests
             StructureEvents.Add((provider, eventArgs));
         }
     }
+
+    [DllImport("user32.dll", EntryPoint = "CreateWindowExW", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr CreateWindowEx(
+        uint extendedStyle,
+        string className,
+        string windowName,
+        uint style,
+        int x,
+        int y,
+        int width,
+        int height,
+        IntPtr parentWindow,
+        IntPtr menu,
+        IntPtr instance,
+        IntPtr parameter);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DestroyWindow(IntPtr windowHandle);
 }

@@ -145,11 +145,7 @@ public sealed class WindowsUiAutomationProvider : IDisposable
         if (_windowHandle != IntPtr.Zero && AttachedProviders.TryRemove(_windowHandle, out _))
         {
             RemoveWindowSubclass(_windowHandle, SubclassCallback, SubclassId);
-            AutomationInteropProvider.ReturnRawElementProvider(
-                _windowHandle,
-                IntPtr.Zero,
-                IntPtr.Zero,
-                null);
+            ReleaseProviderEventMap(_windowHandle);
         }
         GC.SuppressFinalize(this);
     }
@@ -189,11 +185,7 @@ public sealed class WindowsUiAutomationProvider : IDisposable
         {
             AttachedProviders.TryRemove(windowHandle, out _);
             RemoveWindowSubclass(windowHandle, SubclassCallback, subclassId);
-            AutomationInteropProvider.ReturnRawElementProvider(
-                windowHandle,
-                IntPtr.Zero,
-                IntPtr.Zero,
-                null);
+            ReleaseProviderEventMap(windowHandle);
         }
 
         return DefSubclassProc(windowHandle, message, wParam, lParam);
@@ -725,6 +717,17 @@ public sealed class WindowsUiAutomationProvider : IDisposable
         return new Point(point.X, point.Y);
     }
 
+    private static void ReleaseProviderEventMap(IntPtr windowHandle)
+    {
+        // The managed wrapper rejects null, but the native API reserves this call
+        // to release raised-event map entries for a detached or destroyed window.
+        UiaReturnRawElementProvider(
+            windowHandle,
+            IntPtr.Zero,
+            IntPtr.Zero,
+            IntPtr.Zero);
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private struct NativePoint
     {
@@ -745,6 +748,14 @@ public sealed class WindowsUiAutomationProvider : IDisposable
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ScreenToClient(IntPtr windowHandle, ref NativePoint point);
+
+    [DllImport("UIAutomationCore.dll", ExactSpelling = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static extern IntPtr UiaReturnRawElementProvider(
+        IntPtr windowHandle,
+        IntPtr wParam,
+        IntPtr lParam,
+        IntPtr element);
 
     private delegate IntPtr SubclassProcedure(
         IntPtr windowHandle,
