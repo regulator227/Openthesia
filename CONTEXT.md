@@ -66,6 +66,10 @@ _Avoid_: MIDI file, track, song version
 A device-owned reference to a user-owned MIDI file from which Openthesia reads a Chart. Multiple MIDI Sources may present the same Chart; their filenames and locations do not define the Chart's identity.
 _Avoid_: Song, Chart
 
+**MusicXML Source**:
+A device-owned reference to a user-owned MusicXML file from which Openthesia reads a Chart and an authored Score Interpretation. Its filename and location do not define Song or Chart identity.
+_Avoid_: Song, Chart, Score Interpretation
+
 **Hand Assignment**:
 A Chart-owned classification of its notes as left-hand or right-hand parts, shared by all Learners.
 _Avoid_: Staff placement, fingering
@@ -79,10 +83,14 @@ Automatic playback of Chart notes outside the Required Hands during a Practice S
 _Avoid_: Backing track, disabled hand
 
 **Song Metadata**:
-Shared descriptive facts that apply to a Song across all of its Charts.
+Shared descriptive facts, including descriptive tags, that apply to a Song across all of its Charts.
 
 **Chart Metadata**:
-Shared arrangement-specific facts and learning annotations that apply to a Chart for every Learner.
+Shared arrangement-specific facts and learning annotations, including arrangement difficulty, that apply to a Chart for every Learner.
+
+**Learner Song Data**:
+The personal organization and preferences belonging to one Learner for one Song, including group membership and favorite state.
+_Avoid_: Song Metadata, Learner Chart Data
 
 **Learner Chart Data**:
 The personal choices and learning outcomes belonging to one Learner for one Chart.
@@ -96,7 +104,7 @@ An optional Device Setting that presents the next Required Hands Practice Target
 _Avoid_: Keyboard lesson mode, light show
 
 **Song Library**:
-A learner's locally managed collection of Songs, including their descriptive metadata, organization, and Practice Progress.
+A Learner's locally managed view of Songs, shared metadata, personal organization, and Chart-specific Practice Progress.
 _Avoid_: Folder browser, song store
 
 **Practice Progress**:

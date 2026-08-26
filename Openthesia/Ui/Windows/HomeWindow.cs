@@ -115,7 +115,7 @@ public class HomeWindow : ImGuiWindow
                 "Buttons container",
                 new Vector2(width, height),
                 ImGuiChildFlags.AlwaysUseWindowPadding,
-                ImGuiWindowFlags.AlwaysVerticalScrollbar))
+                ImGuiWindowFlags.None))
         {
             _buttonsSize = new Vector2(
                 Math.Max(100f, ImGui.GetContentRegionAvail().X),
