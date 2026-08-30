@@ -48,8 +48,23 @@ public abstract class ImGuiWindow
     public void SetActive(bool active)
     {
         if (active && !_active)
+        {
             _focusOnActivation = true;
+            OnActivated();
+        }
+        else if (!active && _active)
+        {
+            OnDeactivated();
+        }
         _active = active;
+    }
+
+    protected virtual void OnActivated()
+    {
+    }
+
+    protected virtual void OnDeactivated()
+    {
     }
 
     /// <summary>

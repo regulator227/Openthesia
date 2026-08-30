@@ -85,16 +85,26 @@ public static class MidiFileHandler
         var dialog = new OpenFileDialog()
         {
             Title = "Select a midi file",
-            Filter = "midi files (*.mid)|*.mid"
+            Filter = "MIDI files (*.mid;*.midi)|*.mid;*.midi"
         };
         dialog.ShowOpenFileDialog();
 
         if (dialog.Success)
         {
             var file = new FileInfo(dialog.Files.First());
-            //MidiFileData.FileName = file.Name;
-            LoadMidiFile(file.FullName);
-            return true;
+            try
+            {
+                LoadMidiFile(file.FullName);
+                return true;
+            }
+            catch (Exception exception)
+            {
+                User32.MessageBox(
+                    IntPtr.Zero,
+                    $"Couldn't open {file.Name}: {exception.Message}",
+                    "Couldn't open MIDI file",
+                    User32.MB_FLAGS.MB_ICONERROR | User32.MB_FLAGS.MB_TOPMOST);
+            }
         }
         return false;
     }

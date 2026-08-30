@@ -27,11 +27,18 @@ namespace Openthesia.Ui.Windows;
 public class SettingsWindow : ImGuiWindow
 {
     private const string NoDeviceToken = "none";
+    private readonly Dictionary<string, Task<MidiDiscoveryResult>> _midiCountTasks =
+        new(StringComparer.OrdinalIgnoreCase);
 
     public SettingsWindow()
     {
         _id = Enums.Windows.Settings.ToString();
         _active = false;
+    }
+
+    protected override void OnActivated()
+    {
+        _midiCountTasks.Clear();
     }
 
     protected override void OnImGui()
@@ -246,11 +253,22 @@ public class SettingsWindow : ImGuiWindow
 
         // MIDI PATHS
         ImGui.Text($"MIDI PATHS {FontAwesome6.FolderOpen}");
+        ImGui.SameLine();
+        void RefreshMidiCounts() => _midiCountTasks.Clear();
+        var refreshMidiCountsInvoked = ImGui.SmallButton($"{FontAwesome6.ArrowsRotate} Refresh counts");
+        if (refreshMidiCountsInvoked)
+            RefreshMidiCounts();
+        ImGuiAccessibility.Button(
+            "device-settings.midi-paths.refresh-counts",
+            "Refresh MIDI counts",
+            RefreshMidiCounts,
+            "Rescan every MIDI Search Path recursively.",
+            invoked: refreshMidiCountsInvoked);
         ImGui.Spacing();
 
         ImGui.BeginTable("Midi paths scan", 3, ImGuiTableFlags.PadOuterX | ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg);
         ImGui.TableSetupColumn("Path");
-        ImGui.TableSetupColumn("N° of midi", ImGuiTableColumnFlags.WidthFixed, 100);
+        ImGui.TableSetupColumn("MIDI files", ImGuiTableColumnFlags.WidthFixed, 120);
         ImGui.TableSetupColumn("##delete midi path", ImGuiTableColumnFlags.WidthFixed, 50);
         ImGui.TableHeadersRow();
 
@@ -262,16 +280,13 @@ public class SettingsWindow : ImGuiWindow
 
             ImGui.Text(path);
 
-            int nMidis = 0;
-            foreach (var midiFile in Directory.GetFiles(path))
-            {
-                if (Path.GetExtension(midiFile) == ".mid")
-                {
-                    nMidis++;
-                }
-            }
             ImGui.TableSetColumnIndex(1);
-            ImGui.Text(nMidis.ToString());
+            var midiCount = MidiCount(path);
+            ImGui.TextUnformatted(midiCount);
+            ImGuiAccessibility.Text(
+                ImGuiAccessibility.StableId("device-settings.midi-path-count", path),
+                $"MIDI files in {path}",
+                midiCount);
             ImGui.TableSetColumnIndex(2);
             ImGuiTheme.Style.Colors[(int)ImGuiCol.Text] = new Vector4(1, 0, 0.2f, 1);
             ImGui.PushFont(FontController.Font16_Icon12);
@@ -279,6 +294,7 @@ public class SettingsWindow : ImGuiWindow
             if (ImGui.SmallButton($"{FontAwesome6.CircleXmark}##remove_midi_path"))
             {
                 MidiPaths.Remove(path);
+                _midiCountTasks.Remove(path);
             }
             ImGui.PopID();
             ImGui.PopFont();
@@ -295,13 +311,9 @@ public class SettingsWindow : ImGuiWindow
             dlg.InputPath = "C:\\";
             if (dlg.ShowDialog(Program._window.Handle) == true)
             {
-                if (MidiPaths.Contains(dlg.ResultPath))
+                if (!MidiPathsManager.TryAddPath(dlg.ResultPath))
                 {
                     User32.MessageBox(IntPtr.Zero, "Specified folder is already present", "Error", User32.MB_FLAGS.MB_ICONERROR | User32.MB_FLAGS.MB_TOPMOST);
-                }
-                else
-                {
-                    MidiPaths.Add(dlg.ResultPath);
                 }
             }
         }
@@ -788,6 +800,26 @@ public class SettingsWindow : ImGuiWindow
 
         ImGui.PopFont();
         ImGuiTheme.PushTheme();
+    }
+
+    private string MidiCount(string path)
+    {
+        var normalized = MidiPathsManager.NormalizePath(path);
+        if (!_midiCountTasks.TryGetValue(normalized, out var countTask))
+        {
+            countTask = MidiSourceDiscovery.DiscoverAsync(new[] { normalized });
+            _midiCountTasks[normalized] = countTask;
+        }
+
+        if (!countTask.IsCompleted)
+            return "Scanning…";
+        if (!countTask.IsCompletedSuccessfully)
+            return "Unavailable";
+
+        var result = countTask.Result;
+        return result.IsSearchPathUnavailable(normalized)
+            ? "Unavailable"
+            : result.Sources.Count.ToString();
     }
 
 }

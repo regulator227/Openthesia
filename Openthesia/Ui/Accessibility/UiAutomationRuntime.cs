@@ -62,7 +62,7 @@ public static class UiAutomationRuntime
         return windowId switch
         {
             nameof(Enums.Windows.Home) => ("home", "Home"),
-            nameof(Enums.Windows.MidiBrowser) => ("song-library", "Song and Chart selection"),
+            nameof(Enums.Windows.MidiBrowser) => ("midi-source-browser", "MIDI Source selection"),
             nameof(Enums.Windows.ModeSelection) => ("practice-setup", "Practice setup"),
             nameof(Enums.Windows.MidiPlayback) when MidiPracticeSession.IsActive =>
                 ("practice", "Practice"),

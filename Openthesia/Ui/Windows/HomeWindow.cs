@@ -120,7 +120,7 @@ public class HomeWindow : ImGuiWindow
             _buttonsSize = new Vector2(
                 Math.Max(100f, ImGui.GetContentRegionAvail().X),
                 ImGuiUtils.FixedSize(new Vector2(50)).Y);
-            DrawButton("home.song-library", "PLAY MIDI FILE", "Song and Chart Selection", "Choose a Song and Chart.", ("#31CB15", "#20870E", "#31CB15"), ref _isPlayMidiHovered, () =>
+            DrawButton("home.midi-source-browser", "PLAY MIDI FILE", "MIDI Source Selection", "Choose a MIDI file to open as a Chart.", ("#31CB15", "#20870E", "#31CB15"), ref _isPlayMidiHovered, () =>
             {
                 WindowsManager.SetWindow(Enums.Windows.MidiBrowser);
             });

@@ -66,6 +66,10 @@ _Avoid_: MIDI file, track, song version
 A device-owned reference to a user-owned MIDI file from which Openthesia reads a Chart. Multiple MIDI Sources may present the same Chart; their filenames and locations do not define the Chart's identity.
 _Avoid_: Song, Chart
 
+**MIDI Search Path**:
+A device-owned folder configured as a root under which Openthesia discovers MIDI Sources. Its folder hierarchy organizes source selection but does not define Song or Chart identity.
+_Avoid_: Song Library, playlist
+
 **MusicXML Source**:
 A device-owned reference to a user-owned MusicXML file from which Openthesia reads a Chart and an authored Score Interpretation. Its filename and location do not define Song or Chart identity.
 _Avoid_: Song, Chart, Score Interpretation

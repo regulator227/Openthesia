@@ -113,7 +113,7 @@ public class ModeSelectionWindow : ImGuiWindow
             "practice-setup.back",
             "Back",
             GoBack,
-            "Return to Song and Chart selection.",
+            "Return to MIDI Source selection.",
             invoked: backInvoked);
         ImGui.PopFont();
     }
